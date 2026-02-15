@@ -321,6 +321,8 @@ HTML_HOME = """
                 <div class="tab active" data-tab="cgm">📊 CGM 分析</div>
                 <div class="tab" data-tab="meal">🍽️ 餐后分析</div>
                 <div class="tab" data-tab="meal-nutrition">🥗 餐食分析</div>
+                <div class="tab" data-tab="exercise">🏃 运动分析</div>
+                <div class="tab" data-tab="sleep">😴 睡眠分析</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
             </div>
@@ -422,6 +424,68 @@ HTML_HOME = """
                     </button>
                     
                     <div id="nutritionResult"></div>
+                </div>
+                
+                <!-- 运动分析 -->
+                <div class="tab-content" id="exercise">
+                    <div class="form-group">
+                        <label>🏃 运动类型</label>
+                        <select id="exerciseType">
+                            <option value="走路">走路 - 轻度</option>
+                            <option value="慢跑">慢跑 - 中度</option>
+                            <option value="跑步">跑步 - 高强度</option>
+                            <option value="骑行">骑行 - 中度</option>
+                            <option value="游泳">游泳 - 中度</option>
+                            <option value="瑜伽">瑜伽 - 轻度</option>
+                            <option value="健身">健身 - 高强度</option>
+                            <option value="球类">球类 - 高强度</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>⏱️ 时长 (分钟)</label>
+                        <input type="number" id="exerciseDuration" value="30" min="5" max="180">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📅 运动开始时间</label>
+                        <input type="datetime-local" id="exerciseTime">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据</label>
+                        <textarea id="exerciseCgmText" rows="3" placeholder="上传或输入血糖数据"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeExercise()" style="width: 100%;">
+                        分析运动血糖影响
+                    </button>
+                    
+                    <div id="exerciseResult"></div>
+                </div>
+                
+                <!-- 睡眠分析 -->
+                <div class="tab-content" id="sleep">
+                    <div class="form-group">
+                        <label="😴 入睡时间</label>
+                        <input type="datetime-local" id="sleepTime">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label">☀️ 醒来时间</label>
+                        <input type="datetime-local" id="wakeTime">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据</label>
+                        <textarea id="sleepCgmText" rows="3" placeholder="上传或输入血糖数据"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeSleep()" style="width: 100%;">
+                        分析睡眠血糖
+                    </button>
+                    
+                    <div id="sleepResult"></div>
                 </div>
                 
                 <!-- 食物查询 -->
@@ -960,8 +1024,200 @@ HTML_HOME = """
             document.getElementById('historyList').innerHTML = html;
         }
         
+        // 运动分析
+        async function analyzeExercise() {
+            const exerciseType = document.getElementById('exerciseType').value;
+            const duration = parseInt(document.getElementById('exerciseDuration').value) || 30;
+            const exerciseTime = document.getElementById('exerciseTime').value;
+            const cgmText = document.getElementById('exerciseCgmText').value;
+            
+            if (!exerciseTime) {
+                alert('请选择运动时间');
+                return;
+            }
+            if (!cgmText.trim()) {
+                alert('请输入血糖数据');
+                return;
+            }
+            
+            document.getElementById('exerciseResult').innerHTML = '<div class="loading"><div class="spinner"></div>分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/activity/exercise', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        exercise_type: exerciseType,
+                        duration_minutes: duration,
+                        start_time: exerciseTime,
+                        cgm_data: cgmText
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('exerciseResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">${data.error}</p></div>`;
+                    return;
+                }
+                
+                const ex = data.exercise;
+                const recs = data.recommendations;
+                
+                document.getElementById('exerciseResult').innerHTML = `
+                    <div class="result-card">
+                        <h3>🏃 运动血糖分析</h3>
+                        <div class="result-grid">
+                            <div class="result-item">
+                                <div class="value">${ex.exercise_type}</div>
+                                <div class="label">运动类型</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${ex.duration_minutes}分钟</div>
+                                <div class="label">运动时长</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${ex.baseline?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">运动前血糖</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${ex.during_min?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">运动中最低</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${ex.change_from_baseline?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">血糖变化</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${ex.hypoglycemia_risk || 'N/A'}</div>
+                                <div class="label">低血糖风险</div>
+                            </div>
+                        </div>
+                        
+                        <h4 style="margin:16px 0 8px">建议</h4>
+                        <ul style="padding-left:20px;color:#374151">
+                            ${recs.map(r => `<li style="margin-bottom:4px">${r}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                
+                saveHistory('exercise', data);
+                
+            } catch (e) {
+                document.getElementById('exerciseResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">错误: ${e.message}</p></div>`;
+            }
+        }
+        
+        // 睡眠分析
+        async function analyzeSleep() {
+            const sleepTime = document.getElementById('sleepTime').value;
+            const wakeTime = document.getElementById('wakeTime').value;
+            const cgmText = document.getElementById('sleepCgmText').value;
+            
+            if (!sleepTime || !wakeTime) {
+                alert('请选择入睡和醒来时间');
+                return;
+            }
+            if (!cgmText.trim()) {
+                alert('请输入血糖数据');
+                return;
+            }
+            
+            document.getElementById('sleepResult').innerHTML = '<div class="loading"><div class="spinner"></div>分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/activity/sleep', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        sleep_time: sleepTime,
+                        wake_time: wakeTime,
+                        cgm_data: cgmText
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('sleepResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">${data.error}</p></div>`;
+                    return;
+                }
+                
+                const m = data.metrics;
+                const q = data.quality;
+                const recs = data.recommendations;
+                
+                document.getElementById('sleepResult').innerHTML = `
+                    <div class="result-card">
+                        <h3>😴 睡眠血糖分析</h3>
+                        <div class="result-grid">
+                            <div class="result-item">
+                                <div class="value">${m.sleep?.duration_hours || 'N/A'}小时</div>
+                                <div class="label">睡眠时长</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${m.mean?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">平均血糖</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${m.min?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">最低血糖</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${m.max?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">最高血糖</div>
+                            </div>
+                            <div class="result-item highlight">
+                                <div class="value">${q.score}</div>
+                                <div class="label">睡眠质量</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${q.quality}</div>
+                                <div class="label">评级</div>
+                            </div>
+                        </div>
+                        
+                        ${m.time_in_range ? `
+                        <div style="margin-top:12px">
+                            <div>Time in Range: <strong>${m.time_in_range.toFixed(1)}%</strong></div>
+                        </div>
+                        ` : ''}
+                        
+                        ${m.low_episodes ? `
+                        <div style="margin-top:12px;color:#dc2626">
+                            ⚠️ 夜间低血糖: ${m.low_episodes} 次
+                        </div>
+                        ` : ''}
+                        
+                        ${m.dawn_phenomenon ? `
+                        <div style="margin-top:12px;color:#f59e0b">
+                            ⚠️ 黎明现象: 血糖上升 ${m.dawn_phenomenon} mg/dL
+                        </div>
+                        ` : ''}
+                        
+                        <h4 style="margin:16px 0 8px">建议</h4>
+                        <ul style="padding-left:20px;color:#374151">
+                            ${recs.map(r => `<li style="margin-bottom:4px">${r}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                
+                saveHistory('sleep', data);
+                
+            } catch (e) {
+                document.getElementById('sleepResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">错误: ${e.message}</p></div>`;
+            }
+        }
+        
         // 初始化
         document.getElementById('mealTime').value = new Date().toISOString().slice(0, 16);
+        
+        // 设置默认睡眠时间 (昨晚11点到今早7点)
+        const now = new Date();
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        document.getElementById('sleepTime').value = new Date(yesterday.setHours(23, 0, 0, 0)).toISOString().slice(0, 16);
+        document.getElementById('wakeTime').value = new Date(now.setHours(7, 0, 0, 0)).toISOString().slice(0, 16);
+        document.getElementById('exerciseTime').value = new Date(now.setHours(now.getHours() - 1, 0, 0, 0)).toISOString().slice(0, 16);
+        
         loadHistory();
     </script>
 </body>
@@ -1180,6 +1436,95 @@ async def api_meal_nutrition(request: Request):
         ts = datetime.fromisoformat(timestamp.replace('Z', '+00:00')) if timestamp else datetime.now()
         result = analyze_meal(foods, ts, meal_name)
         return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/activity/exercise")
+async def api_exercise_analyze(request: Request):
+    """运动血糖分析"""
+    from glyconutri.activity import ExerciseEvent, ExerciseAnalysis
+    
+    body = await request.json()
+    
+    exercise_type = body.get('exercise_type')
+    duration_minutes = body.get('duration_minutes', 30)
+    start_time = body.get('start_time')
+    cgm_text = body.get('cgm_data')
+    
+    if not exercise_type or not start_time:
+        return {"error": "请提供运动类型和时间"}
+    
+    if not cgm_text:
+        return {"error": "请提供血糖数据"}
+    
+    try:
+        lines = [l.strip() for l in cgm_text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        exercise = ExerciseEvent(exercise_type, duration_minutes, start_dt)
+        analysis = ExerciseAnalysis(exercise, df)
+        return analysis.get_full_analysis()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/activity/sleep")
+async def api_sleep_analyze(request: Request):
+    """睡眠血糖分析"""
+    from glyconutri.activity import SleepEvent, SleepAnalysis
+    
+    body = await request.json()
+    
+    sleep_time = body.get('sleep_time')
+    wake_time = body.get('wake_time')
+    cgm_text = body.get('cgm_data')
+    
+    if not sleep_time or not wake_time:
+        return {"error": "请提供入睡和醒来时间"}
+    if not cgm_text:
+        return {"error": "请提供血糖数据"}
+    
+    try:
+        lines = [l.strip() for l in cgm_text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        sleep_dt = datetime.fromisoformat(sleep_time.replace('Z', '+00:00'))
+        wake_dt = datetime.fromisoformat(wake_time.replace('Z', '+00:00'))
+        sleep = SleepEvent(sleep_dt, wake_dt)
+        analysis = SleepAnalysis(sleep, df)
+        return analysis.get_full_analysis()
     except Exception as e:
         return {"error": str(e)}
 
