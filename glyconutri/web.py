@@ -656,7 +656,7 @@ HTML_HOME = """
         </div>
         
         <div class="footer">
-            GlycoNutri v0.4 | 血糖营养计算工具
+            GlycoNutri v1.2 | 血糖营养计算工具
         </div>
     </div>
     
