@@ -304,6 +304,217 @@ class PostMealAnalysis:
         """血糖响应幅度 (峰值 - 基线)"""
         return self.glucose_excursion_amplitude()
     
+    # ============ 临床指标 ============
+    
+    def calculate_eag(self) -> Optional[float]:
+        """eAG - 估计平均血糖 (mg/dL)
+        eAG = (Mean Glucose + 2.63) / 1.0464
+        与 HbA1c 相关
+        """
+        window = self.find_post_meal_window()
+        if window.empty:
+            return None
+        
+        mean_g = window['glucose'].mean()
+        return (mean_g + 2.63) / 1.0464
+    
+    def calculate_grade(self) -> Optional[float]:
+        """GRADE - 血糖风险评估
+        基于血糖在目标范围内的时间计算
+        """
+        window = self.find_post_meal_window()
+        if window.empty:
+            return None
+        
+        # 计算各范围权重
+        below_70 = (window['glucose'] < 70).sum() / len(window) * 100
+        range_70_100 = ((window['glucose'] >= 70) & (window['glucose'] < 100)).sum() / len(window) * 100
+        range_100_140 = ((window['glucose'] >= 100) & (window['glucose'] < 140)).sum() / len(window) * 100
+        range_140_180 = ((window['glucose'] >= 140) & (window['glucose'] < 180)).sum() / len(window) * 100
+        above_180 = (window['glucose'] >= 180).sum() / len(window) * 100
+        
+        # GRADE 权重计算
+        grade = (below_70 * 0.8 + range_70_100 * 0 + range_100_140 * 0.2 + 
+                 range_140_180 * 0.5 + above_180 * 0.9)
+        
+        return grade
+    
+    def calculate_gvi(self) -> Optional[float]:
+        """GVI - 血糖变异性指数
+        GVI = NAGE / Mean Glucose
+        """
+        window = self.find_post_meal_window()
+        if window.empty or len(window) < 2:
+            return None
+        
+        mean_g = window['glucose'].mean()
+        if mean_g == 0:
+            return None
+        
+        # 计算相邻点差值
+        window_sorted = window.sort_values('timestamp')
+        diffs = window_sorted['glucose'].diff().abs().dropna()
+        
+        if diffs.empty:
+            return None
+        
+        return diffs.mean() / mean_g * 100
+    
+    def calculate_pgs(self) -> Optional[float]:
+        """PGS - 血糖稳定性百分比
+        PGS = 100 - (SD / Mean * 100)
+        """
+        window = self.find_post_meal_window()
+        if window.empty:
+            return None
+        
+        mean_g = window['glucose'].mean()
+        sd_g = window['glucose'].std()
+        
+        if mean_g == 0:
+            return None
+        
+        pgs = 100 - (sd_g / mean_g * 100)
+        return max(0, min(100, pgs))
+    
+    # ============ 碳水化合物效应指标 ============
+    
+    def calculate_cir(self, insulin_units: float = None) -> Optional[float]:
+        """CIR - 碳水化合物胰岛素比
+        CIR = Total Carbs / Insulin Units
+        需要胰岛素数据
+        """
+        if insulin_units is None:
+            return None
+        
+        if insulin_units == 0:
+            return None
+        
+        return self.meal.carbs / insulin_units if self.meal.carbs else None
+    
+    def calculate_icr(self, insulin_units: float = None) -> Optional[float]:
+        """ICR - 胰岛素碳水比 (同 CIR)
+        ICR = 1 / CIR = Insulin Units / Total Carbs
+        """
+        cir = self.calculate_cir(insulin_units)
+        return 1 / cir if cir and cir > 0 else None
+    
+    def calculate_insulin_sensitivity(self, insulin_units: float = None) -> Optional[float]:
+        """胰岛素敏感因子 (ISF)
+        ISF = Glucose Drop / Insulin Units
+        """
+        if insulin_units is None or insulin_units == 0:
+            return None
+        
+        baseline = self.calculate_baseline()
+        if baseline is None:
+            return None
+        
+        # 假设餐后最低点代表胰岛素效应
+        window = self.find_post_meal_window()
+        min_glucose = window['glucose'].min()
+        
+        return (baseline - min_glucose) / insulin_units
+    
+    # ============ 餐后特异指标 ============
+    
+    def early_phase_auc(self, minutes: int = 30) -> Optional[float]:
+        """早期相 AUC (0-30min) - 胰岛素分泌早期响应"""
+        window = self.find_post_meal_window()
+        if window.empty:
+            return None
+        
+        baseline = self.calculate_baseline()
+        if baseline is None:
+            return None
+        
+        # 餐后 0-30 分钟
+        end_time = self.meal.timestamp + timedelta(minutes=minutes)
+        early = window[window['timestamp'] <= end_time]
+        
+        if len(early) < 2:
+            return None
+        
+        early = early.copy()
+        early['above_baseline'] = early['glucose'] - baseline
+        early.loc[early['above_baseline'] < 0, 'above_baseline'] = 0
+        early = early.sort_values('timestamp')
+        early['time_diff'] = early['timestamp'].diff().dt.total_seconds() / 3600
+        
+        auc = 0
+        for i in range(1, len(early)):
+            h = early.iloc[i]['above_baseline'] + early.iloc[i-1]['above_baseline']
+            t = early.iloc[i]['time_diff']
+            auc += h * t / 2
+        
+        return auc
+    
+    def late_phase_auc(self, start_min: int = 60, end_hours: int = 2) -> Optional[float]:
+        """晚期相 AUC (60-120min) - 胰岛素分泌晚期响应"""
+        window = self.find_post_meal_window(end_hours)
+        if window.empty:
+            return None
+        
+        baseline = self.calculate_baseline()
+        if baseline is None:
+            return None
+        
+        start_time = self.meal.timestamp + timedelta(minutes=start_min)
+        end_time = self.meal.timestamp + timedelta(hours=end_hours)
+        
+        late = window[(window['timestamp'] >= start_time) & (window['timestamp'] <= end_time)]
+        
+        if len(late) < 2:
+            return None
+        
+        late = late.copy()
+        late['above_baseline'] = late['glucose'] - baseline
+        late.loc[late['above_baseline'] < 0, 'above_baseline'] = 0
+        late = late.sort_values('timestamp')
+        late['time_diff'] = late['timestamp'].diff().dt.total_seconds() / 3600
+        
+        auc = 0
+        for i in range(1, len(late)):
+            h = late.iloc[i]['above_baseline'] + late.iloc[i-1]['above_baseline']
+            t = late.iloc[i]['time_diff']
+            auc += h * t / 2
+        
+        return auc
+    
+    def peak_delay(self) -> Optional[float]:
+        """达峰延迟 (分钟)
+        正常 <60 分钟
+        >60 提示胃排空延迟或胰岛素分泌迟缓
+        """
+        ttp = self.time_to_peak()
+        return ttp - 30 if ttp else None  # 相对于30分钟理论峰值的延迟
+    
+    def glucose_sag(self) -> Optional[float]:
+        """Glucose Sag - 血糖下凹
+        峰值后出现的二次下降，可能反映胰岛素效应
+        """
+        window = self.find_post_meal_window(3)  # 看3小时
+        if window.empty or len(window) < 4:
+            return None
+        
+        peak_time = self.calculate_peak_time()
+        if peak_time is None:
+            return None
+        
+        # 峰值后 30-90 分钟
+        start_sag = peak_time + timedelta(minutes=30)
+        end_sag = peak_time + timedelta(minutes=90)
+        
+        sag_window = window[(window['timestamp'] >= start_sag) & (window['timestamp'] <= end_sag)]
+        
+        if sag_window.empty:
+            return None
+        
+        peak = self.calculate_peak()
+        min_in_sag = sag_window['glucose'].min()
+        
+        return peak - min_in_sag  # 正值表示下凹
+    
     def get_full_analysis(self) -> Dict:
         """获取完整 PK/PD 分析结果"""
         baseline = self.calculate_baseline()
@@ -336,6 +547,20 @@ class PostMealAnalysis:
                 "duration_above_180_min": self.duration_above_target(180),
                 "excursion_count": self.count_excursions(),
                 "iauc_2h": iauc
+            },
+            # 临床指标
+            "clinical": {
+                "eag": self.calculate_eag(),
+                "grade": self.calculate_grade(),
+                "gvi": self.calculate_gvi(),
+                "pgs": self.calculate_pgs()
+            },
+            # 餐后特异指标
+            "postmeal": {
+                "early_phase_auc": self.early_phase_auc(),
+                "late_phase_auc": self.late_phase_auc(),
+                "peak_delay_min": self.peak_delay(),
+                "glucose_sag": self.glucose_sag()
             },
             "data_points": len(self.find_post_meal_window())
         }
