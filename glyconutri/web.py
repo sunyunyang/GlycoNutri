@@ -323,6 +323,7 @@ HTML_HOME = """
                 <div class="tab" data-tab="meal-nutrition">🥗 餐食分析</div>
                 <div class="tab" data-tab="exercise">🏃 运动分析</div>
                 <div class="tab" data-tab="sleep">😴 睡眠分析</div>
+                <div class="tab" data-tab="medication">💊 药物分析</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
             </div>
@@ -486,6 +487,45 @@ HTML_HOME = """
                     </button>
                     
                     <div id="sleepResult"></div>
+                </div>
+                
+                <!-- 药物分析 -->
+                <div class="tab-content" id="medication">
+                    <div class="form-group">
+                        <label>💊 药物类型</label>
+                        <select id="medicationType" onchange="updateMedicationList()">
+                            <option value="口服">口服降糖药</option>
+                            <option value="胰岛素">胰岛素</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>💉 药物名称</label>
+                        <select id="medicationName">
+                            <option value="二甲双胍">二甲双胍</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📝 剂量</label>
+                        <input type="number" id="medicationDosage" placeholder="剂量(mg)或单位(U)" step="0.5">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📅 服药时间</label>
+                        <input type="datetime-local" id="medicationTime">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据</label>
+                        <textarea id="medicationCgmText" rows="3" placeholder="上传或输入血糖数据"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeMedication()" style="width: 100%;">
+                        分析药物血糖影响
+                    </button>
+                    
+                    <div id="medicationResult"></div>
                 </div>
                 
                 <!-- 食物查询 -->
@@ -1207,6 +1247,131 @@ HTML_HOME = """
             }
         }
         
+        // 更新药物列表
+        function updateMedicationList() {
+            const type = document.getElementById('medicationType').value;
+            const select = document.getElementById('medicationName');
+            
+            const oralMed = ['二甲双胍', '阿卡波糖', '伏格列波糖', '格列本脲', '格列齐特', '格列吡嗪', '格列美脲', '瑞格列奈', '那格列奈', '吡格列酮', '罗格列酮', '西格列汀', '沙格列汀', '维格列汀', '恩格列净', '卡格列净', '达格列净', '司美格鲁肽', '度拉糖肽', '利拉鲁肽'];
+            const insulinMed = ['速效', '短效', '中效', '长效', '超长效', '预混'];
+            
+            const meds = type === '口服' ? oralMed : insulinMed;
+            select.innerHTML = meds.map(m => `<option value="${m}">${m}</option>`).join('');
+            
+            // 更新剂量占位符
+            document.getElementById('medicationDosage').placeholder = type === '口服' ? '剂量(mg)' : '剂量(U)';
+        }
+        
+        // 药物分析
+        async function analyzeMedication() {
+            const medicationType = document.getElementById('medicationType').value;
+            const medicationName = document.getElementById('medicationName').value;
+            const dosage = parseFloat(document.getElementById('medicationDosage').value);
+            const medicationTime = document.getElementById('medicationTime').value;
+            const cgmText = document.getElementById('medicationCgmText').value;
+            
+            if (!medicationTime) {
+                alert('请选择服药时间');
+                return;
+            }
+            if (!cgmText.trim()) {
+                alert('请输入血糖数据');
+                return;
+            }
+            
+            document.getElementById('medicationResult').innerHTML = '<div class="loading"><div class="spinner"></div>分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/medication/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        medication_type: medicationType,
+                        medication_name: medicationName,
+                        dosage: dosage,
+                        taken_time: medicationTime,
+                        cgm_data: cgmText
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('medicationResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">${data.error}</p></div>`;
+                    return;
+                }
+                
+                const resp = data.response;
+                const eff = data.efficacy;
+                const recs = data.recommendations;
+                
+                const med = resp.medication || {};
+                
+                document.getElementById('medicationResult').innerHTML = `
+                    <div class="result-card">
+                        <h3>💊 药物血糖分析</h3>
+                        <div class="result-grid">
+                            <div class="result-item">
+                                <div class="value">${med.medication_name || medicationName}</div>
+                                <div class="label">药物</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${med.dosage || dosage || 'N/A'}</div>
+                                <div class="label">剂量</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${med.baseline?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">服药前血糖</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${eff.efficacy}</div>
+                                <div class="label">药效</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${eff.score}</div>
+                                <div class="label">效果评分</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${med.hypo_risk || '低'}</div>
+                                <div class="label">低血糖风险</div>
+                            </div>
+                        </div>
+                        
+                        ${resp.overall ? `
+                        <h4 style="margin:16px 0 8px">血糖变化</h4>
+                        <div class="result-grid">
+                            <div class="result-item">
+                                <div class="value">${resp.overall.min?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">最低</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${resp.overall.max?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">最高</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${resp.overall.change_from_baseline?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">变化</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${resp.overall.max_drop?.toFixed(0) || 'N/A'}</div>
+                                <div class="label">最大降幅</div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        <h4 style="margin:16px 0 8px">建议</h4>
+                        <ul style="padding-left:20px;color:#374151">
+                            ${recs.map(r => `<li style="margin-bottom:4px">${r}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                
+                saveHistory('medication', data);
+                
+            } catch (e) {
+                document.getElementById('medicationResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">错误: ${e.message}</p></div>`;
+            }
+        }
+        
         // 初始化
         document.getElementById('mealTime').value = new Date().toISOString().slice(0, 16);
         
@@ -1217,6 +1382,7 @@ HTML_HOME = """
         document.getElementById('sleepTime').value = new Date(yesterday.setHours(23, 0, 0, 0)).toISOString().slice(0, 16);
         document.getElementById('wakeTime').value = new Date(now.setHours(7, 0, 0, 0)).toISOString().slice(0, 16);
         document.getElementById('exerciseTime').value = new Date(now.setHours(now.getHours() - 1, 0, 0, 0)).toISOString().slice(0, 16);
+        document.getElementById('medicationTime').value = new Date().toISOString().slice(0, 16);
         
         loadHistory();
     </script>
@@ -1525,6 +1691,56 @@ async def api_sleep_analyze(request: Request):
         sleep = SleepEvent(sleep_dt, wake_dt)
         analysis = SleepAnalysis(sleep, df)
         return analysis.get_full_analysis()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/medication/analyze")
+async def api_medication_analyze(request: Request):
+    """药物血糖分析"""
+    from glyconutri.medication import MedicationEvent, MedicationAnalysis, InsulinAnalysis
+    
+    body = await request.json()
+    
+    medication_type = body.get('medication_type', '口服')
+    medication_name = body.get('medication_name')
+    dosage = body.get('dosage')
+    taken_time = body.get('taken_time')
+    cgm_text = body.get('cgm_data')
+    
+    if not medication_name or not taken_time:
+        return {"error": "请提供药物名称和时间"}
+    if not cgm_text:
+        return {"error": "请提供血糖数据"}
+    
+    try:
+        lines = [l.strip() for l in cgm_text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        taken_dt = datetime.fromisoformat(taken_time.replace('Z', '+00:00'))
+        
+        if medication_type == "胰岛素":
+            analysis = InsulinAnalysis(medication_name, dosage or 1, taken_dt, df)
+            return analysis.get_full_analysis()
+        else:
+            med = MedicationEvent(medication_name, dosage, taken_time=taken_dt, medication_type=medication_type)
+            analysis = MedicationAnalysis(med, df)
+            return analysis.get_full_analysis()
     except Exception as e:
         return {"error": str(e)}
 
