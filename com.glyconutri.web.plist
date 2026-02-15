@@ -6,7 +6,7 @@
     <string>com.glyconutri.web</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/williamsun/.openclaw/workspace/GlycoNutri/venv/bin/python</string>
         <string>-m</string>
         <string>glyconutri.web</string>
     </array>
@@ -16,5 +16,9 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/glyconutri.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/glyconutri.launchd.log</string>
 </dict>
 </plist>
