@@ -809,35 +809,44 @@ async def api_cgm_analyze(request: Request):
     text = body.get('data', '')
     
     try:
-        # 解析数据
+        # 解析数据 - 过滤空行和注释
         lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        
+        # 跳过可能的前几行元数据，找表头
+        header_idx = 0
+        for i, line in enumerate(lines):
+            # 表头应该包含时间或血糖相关关键词（中英文）
+            if any(k in line.lower() for k in ['time', 'date', 'glucose', 'value', '血糖', '时间', 'sg', 'glucose']):
+                header_idx = i
+                break  # 找到表头就跳出
+        
+        # 取表头行之后的数据
+        data_text = '\n'.join(lines[header_idx:])
         
         if not lines:
             return {"error": "数据为空"}
         
         # 检测分隔符
-        first_line = lines[0]
+        first_line = lines[header_idx]
+        import io
         if '\t' in first_line:
             # TAB 分隔 (TXT)
-            import io
-            df = pd.read_csv(io.StringIO(text), sep='\t', on_bad_lines='skip')
+            df = pd.read_csv(io.StringIO(data_text), sep='\t', on_bad_lines='skip')
         elif ',' in first_line:
             # CSV 格式
-            import io
-            df = pd.read_csv(io.StringIO(text), on_bad_lines='skip')
+            df = pd.read_csv(io.StringIO(data_text), on_bad_lines='skip')
         else:
             # 空格分隔
-            import io
-            df = pd.read_csv(io.StringIO(text), sep=r'\s+', on_bad_lines='skip')
+            df = pd.read_csv(io.StringIO(data_text), sep=r'\s+', on_bad_lines='skip')
         
         # 标准化列名
         cols = [c.lower() for c in df.columns]
         
-        time_col = next((c for c in df.columns if 'time' in c.lower() or 'date' in c.lower()), None)
-        glucose_col = next((c for c in df.columns if 'glucose' in c.lower() or 'value' in c.lower() or 'sg' in c.lower()), None)
+        time_col = next((c for c in df.columns if any(k in c.lower() for k in ['time', 'date', 'timestamp', '时间', '日期'])), None)
+        glucose_col = next((c for c in df.columns if any(k in c.lower() for k in ['glucose', 'value', 'sg', '血糖', 'mg'])), None)
         
         if not time_col or not glucose_col:
-            return {"error": "未找到时间或血糖列"}
+            return {"error": f"未找到时间或血糖列。检测到的列: {list(df.columns)}"}
         
         df['timestamp'] = pd.to_datetime(df[time_col])
         df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
@@ -850,8 +859,11 @@ async def api_cgm_analyze(request: Request):
         
         # 转换 numpy 类型为 Python 原生类型
         def convert(obj):
+            import math
             if hasattr(obj, 'item'):  # numpy types
-                return obj.item()
+                obj = obj.item()
+            if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+                return None
             return obj
         
         results_clean = {k: convert(v) for k, v in results.items()}
