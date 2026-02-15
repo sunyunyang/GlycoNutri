@@ -328,13 +328,13 @@ HTML_HOME = """
                 <!-- CGM 分析 -->
                 <div class="tab-content active" id="cgm">
                     <div class="file-upload" id="dropZone">
-                        <input type="file" id="cgmFile" accept=".csv,.json" style="display:none">
+                        <input type="file" id="cgmFile" accept=".csv,.json,.txt" style="display:none">
                         <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
                         <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">
                             点击或拖拽上传 CGM 数据
                         </div>
                         <div style="color: #6b7280;">
-                            支持 CSV、JSON 格式 (Dexcom, Libre, Medtronic)
+                            支持 CSV、JSON、TXT 格式 (Dexcom, Libre, Medtronic)
                         </div>
                     </div>
                     
@@ -377,7 +377,7 @@ HTML_HOME = """
                     <div class="form-group">
                         <label>📊 CGM 数据 (餐后分析必需)</label>
                         <div class="file-upload" id="cgmDropZone" style="padding: 20px;">
-                            <input type="file" id="mealCgmFile" accept=".csv,.json" style="display:none">
+                            <input type="file" id="mealCgmFile" accept=".csv,.json,.txt" style="display:none">
                             <div>点击上传 CGM 数据文件</div>
                         </div>
                         <div class="help-text">或直接输入血糖数据</div>
@@ -810,15 +810,25 @@ async def api_cgm_analyze(request: Request):
     
     try:
         # 解析数据
-        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
         
-        # 检测格式
-        if ',' in lines[0]:
+        if not lines:
+            return {"error": "数据为空"}
+        
+        # 检测分隔符
+        first_line = lines[0]
+        if '\t' in first_line:
+            # TAB 分隔 (TXT)
+            import io
+            df = pd.read_csv(io.StringIO(text), sep='\t')
+        elif ',' in first_line:
             # CSV 格式
             import io
             df = pd.read_csv(io.StringIO(text))
         else:
-            return {"error": "无法解析数据格式"}
+            # 空格分隔
+            import io
+            df = pd.read_csv(io.StringIO(text), sep=r'\s+')
         
         # 标准化列名
         cols = [c.lower() for c in df.columns]
