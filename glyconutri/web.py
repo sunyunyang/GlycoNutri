@@ -820,15 +820,15 @@ async def api_cgm_analyze(request: Request):
         if '\t' in first_line:
             # TAB 分隔 (TXT)
             import io
-            df = pd.read_csv(io.StringIO(text), sep='\t')
+            df = pd.read_csv(io.StringIO(text), sep='\t', on_bad_lines='skip')
         elif ',' in first_line:
             # CSV 格式
             import io
-            df = pd.read_csv(io.StringIO(text))
+            df = pd.read_csv(io.StringIO(text), on_bad_lines='skip')
         else:
             # 空格分隔
             import io
-            df = pd.read_csv(io.StringIO(text), sep=r'\s+')
+            df = pd.read_csv(io.StringIO(text), sep=r'\s+', on_bad_lines='skip')
         
         # 标准化列名
         cols = [c.lower() for c in df.columns]
@@ -848,11 +848,19 @@ async def api_cgm_analyze(request: Request):
         # 返回简洁的 CGM 数据
         cgm_data = df[['timestamp', 'glucose']].to_dict('records')
         
+        # 转换 numpy 类型为 Python 原生类型
+        def convert(obj):
+            if hasattr(obj, 'item'):  # numpy types
+                return obj.item()
+            return obj
+        
+        results_clean = {k: convert(v) for k, v in results.items()}
+        
         return {
             "success": True,
             "data_points": len(df),
             "time_range": f"{df['timestamp'].min().strftime('%m-%d %H:%M')} ~ {df['timestamp'].max().strftime('%m-%d %H:%M')}",
-            "results": results,
+            "results": results_clean,
             "cgm_data": cgm_data
         }
         
