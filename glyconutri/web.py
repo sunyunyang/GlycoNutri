@@ -319,6 +319,7 @@ HTML_HOME = """
         <div class="main-card">
             <div class="tabs">
                 <div class="tab active" data-tab="cgm">📊 CGM 分析</div>
+                <div class="tab" data-tab="trend">📈 趋势分析</div>
                 <div class="tab" data-tab="meal">🍽️ 餐后分析</div>
                 <div class="tab" data-tab="meal-nutrition">🥗 餐食分析</div>
                 <div class="tab" data-tab="exercise">🏃 运动分析</div>
@@ -355,6 +356,59 @@ HTML_HOME = """
                     </button>
                     
                     <div id="cgmResult"></div>
+                </div>
+                
+                <!-- 趋势分析 -->
+                <div class="tab-content" id="trend">
+                    <div class="form-group">
+                        <label>📈 上传多日 CGM 数据</label>
+                        <div class="file-upload" id="trendDropZone">
+                            <input type="file" id="trendFile" accept=".csv,.json,.txt" style="display:none">
+                            <div style="font-size: 36px; margin-bottom: 12px;">📊</div>
+                            <div>点击或拖拽上传 CGM 数据</div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>或手动输入血糖数据</label>
+                        <textarea id="trendCgmText" rows="6" placeholder="支持多日数据
+格式: timestamp,glucose
+2026-02-15 08:00,95
+2026-02-15 08:15,98
+2026-02-15 08:30,102
+..."></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeTrend()" style="width: 100%;">
+                        分析血糖趋势
+                    </button>
+                    
+                    <div id="trendResult"></div>
+                    
+                    <div id="trendChart" style="margin-top:24px;display:none">
+                        <h4 style="margin-bottom:12px">📈 CGM 曲线</h4>
+                        <canvas id="cgmChart" style="width:100%;height:300px"></canvas>
+                        
+                        <h4 style="margin:24px 0 12px">🥧 TIR 分布</h4>
+                        <div style="display:flex;justify-content:center;gap:16px;margin-bottom:12px">
+                            <div id="tirBelow" style="text-align:center">
+                                <div style="width:60px;height:60px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#dc2626">0%</div>
+                                <div style="margin-top:4px;font-size:12px">低</div>
+                            </div>
+                            <div id="tirInRange" style="text-align:center">
+                                <div style="width:60px;height:60px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#16a34a">0%</div>
+                                <div style="margin-top:4px;font-size:12px">正常</div>
+                            </div>
+                            <div id="tirAbove" style="text-align:center">
+                                <div style="width:60px;height:60px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#dc2626">0%</div>
+                                <div style="margin-top:4px;font-size:12px">高</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-secondary" id="exportCsvBtn" onclick="exportCSV()" style="width:100%;margin-top:16px;display:none">
+                        📥 导出 CSV 报告
+                    </button>
                 </div>
                 
                 <!-- 餐后分析 -->
@@ -622,6 +676,16 @@ HTML_HOME = """
             reader.readAsText(file);
         });
         
+        setupFileUpload('trendDropZone', 'trendFile', (file) => {
+            document.getElementById('trendResult').innerHTML = '<div class="loading"><div class="spinner"></div>正在读取文件...</div>';
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('trendCgmText').value = e.target.result;
+                analyzeTrend();
+            };
+            reader.readAsText(file);
+        });
+        
         // 添加食物
         let foodCount = 1;
         function addFood() {
@@ -805,6 +869,193 @@ HTML_HOME = """
                     `;
                 }
             } catch (e) {}
+        }
+        
+        // 趋势分析
+        let trendChartData = null;
+        
+        async function analyzeTrend() {
+            const text = document.getElementById('trendCgmText').value;
+            if (!text.trim()) {
+                alert('请上传 CGM 文件或输入数据');
+                return;
+            }
+            
+            document.getElementById('trendResult').innerHTML = '<div class="loading"><div class="spinner"></div>分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/trend/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('trendResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">${data.error}</p></div>`;
+                    return;
+                }
+                
+                // 显示每日汇总
+                let html = '<div class="result-card"><h3>📈 趋势分析</h3>';
+                
+                // 整体统计
+                if (data.daily && data.daily.length > 0) {
+                    const lastDay = data.daily[data.daily.length - 1];
+                    html += `
+                        <div class="result-grid">
+                            <div class="result-item highlight">
+                                <div class="value">${lastDay.tir?.toFixed(1) || 0}%</div>
+                                <div class="label">今日 TIR</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${lastDay.mean?.toFixed(0) || 0}</div>
+                                <div class="label">平均血糖</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${lastDay.std?.toFixed(1) || 0}</div>
+                                <div class="label">波动</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${lastDay.min?.toFixed(0) || 0}-${lastDay.max?.toFixed(0) || 0}</div>
+                                <div class="label">范围</div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // 时段分析
+                if (data.time_of_day) {
+                    html += '<h4 style="margin:16px 0 8px">时段分析</h4><div class="result-grid">';
+                    for (const [period, stats] of Object.entries(data.time_of_day)) {
+                        html += `
+                            <div class="result-item">
+                                <div class="value">${stats.mean?.toFixed(0) || '-'}</div>
+                                <div class="label">${period}</div>
+                            </div>
+                        `;
+                    }
+                    html += '</div>';
+                }
+                
+                // 模式检测
+                if (data.patterns) {
+                    if (data.patterns.dawn_phenomenon) {
+                        html += `<div style="margin-top:12px;padding:8px;background:#fef3c7;border-radius:8px">⚠️ 黎明现象: 血糖上升 ${data.patterns.dawn_phenomenon.rise?.toFixed(0)} mg/dL</div>`;
+                    }
+                    if (data.patterns.high_episodes && data.patterns.high_episodes.length > 0) {
+                        html += `<div style="margin-top:12px;padding:8px;background:#fee2e2;border-radius:8px">⚠️ 持续高血糖: ${data.patterns.high_episodes.length} 次</div>`;
+                    }
+                    if (data.patterns.low_episodes && data.patterns.low_episodes.length > 0) {
+                        html += `<div style="margin-top:12px;padding:8px;background:#fee2e2;border-radius:8px">⚠️ 低血糖事件: ${data.patterns.low_episodes.length} 次</div>`;
+                    }
+                }
+                
+                html += '</div>';
+                document.getElementById('trendResult').innerHTML = html;
+                
+                // 保存数据用于图表
+                trendChartData = data;
+                
+                // 获取图表数据
+                const chartRes = await fetch('/api/chart/data', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                const chartData = await chartRes.json();
+                
+                // 显示图表区域
+                document.getElementById('trendChart').style.display = 'block';
+                document.getElementById('exportCsvBtn').style.display = 'block';
+                
+                // 绘制 TIR 饼图
+                if (chartData.tir_pie) {
+                    document.getElementById('tirBelow').innerHTML = `
+                        <div style="width:60px;height:60px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#dc2626">${chartData.tir_pie.below.percent}%</div>
+                        <div style="margin-top:4px;font-size:12px">低</div>
+                    `;
+                    document.getElementById('tirInRange').innerHTML = `
+                        <div style="width:60px;height:60px;background:#dcfce7;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#16a34a">${chartData.tir_pie.in_range.percent}%</div>
+                        <div style="margin-top:4px;font-size:12px">正常</div>
+                    `;
+                    document.getElementById('tirAbove').innerHTML = `
+                        <div style="width:60px;height:60px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#dc2626">${chartData.tir_pie.above.percent}%</div>
+                        <div style="margin-top:4px;font-size:12px">高</div>
+                    `;
+                }
+                
+                // 绘制折线图 (简单实现)
+                if (chartData.time_series && chartData.time_series.length > 0) {
+                    const canvas = document.getElementById('cgmChart');
+                    const ctx = canvas.getContext('2d');
+                    const width = canvas.width = canvas.offsetWidth;
+                    const height = canvas.height = 300;
+                    
+                    const dataPoints = chartData.time_series.slice(-100); // 最后100个点
+                    const minG = Math.min(...dataPoints.map(d => d.y)) - 10;
+                    const maxG = Math.max(...dataPoints.map(d => d.y)) + 10;
+                    
+                    ctx.clearRect(0, 0, width, height);
+                    
+                    // 绘制范围区域
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.1)';
+                    const lowY = height - ((70 - minG) / (maxG - minG) * height);
+                    const highY = height - ((180 - minG) / (maxG - minG) * height);
+                    ctx.fillRect(0, highY, width, lowY - highY);
+                    
+                    // 绘制线条
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#3b82f6';
+                    ctx.lineWidth = 2;
+                    
+                    dataPoints.forEach((point, i) => {
+                        const x = (i / (dataPoints.length - 1)) * width;
+                        const y = height - ((point.y - minG) / (maxG - minG) * height);
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    });
+                    ctx.stroke();
+                    
+                    // 绘制阈值线
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(0, height - ((70 - minG) / (maxG - minG) * height));
+                    ctx.lineTo(width, height - ((70 - minG) / (maxG - minG) * height));
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(0, height - ((180 - minG) / (maxG - minG) * height));
+                    ctx.lineTo(width, height - ((180 - minG) / (maxG - minG) * height));
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+                
+                saveHistory('trend', data);
+                
+            } catch (e) {
+                document.getElementById('trendResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">错误: ${e.message}</p></div>`;
+            }
+        }
+        
+        // 导出 CSV
+        function exportCSV() {
+            if (!trendChartData) {
+                alert('请先分析数据');
+                return;
+            }
+            
+            const csvContent = "data:text/csv;charset=utf-8," 
+                + "Date,Mean,TIR,Std,Min,Max\n"
+                + trendChartData.daily.map(d => 
+                    `${d.date},${d.mean?.toFixed(1)},${d.tir?.toFixed(1)}%,${d.std?.toFixed(1)},${d.min?.toFixed(0)},${d.max?.toFixed(0)}`
+                ).join('\n');
+            
+            const link = document.createElement('a');
+            link.href = encodeURI(csvContent);
+            link.download = `glyconutri_report_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
         }
         
         // 分析 CGM
@@ -1741,6 +1992,73 @@ async def api_medication_analyze(request: Request):
             med = MedicationEvent(medication_name, dosage, taken_time=taken_dt, medication_type=medication_type)
             analysis = MedicationAnalysis(med, df)
             return analysis.get_full_analysis()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/trend/analyze")
+async def api_trend_analyze(request: Request):
+    """血糖趋势分析"""
+    from glyconutri.trend import analyze_trend
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        result = analyze_trend(df)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/chart/data")
+async def api_chart_data(request: Request):
+    """获取图表数据"""
+    from glyconutri.chart import get_chart_data
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return get_chart_data(df)
     except Exception as e:
         return {"error": str(e)}
 
