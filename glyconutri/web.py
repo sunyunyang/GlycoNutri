@@ -816,7 +816,17 @@ async def api_cgm_analyze(request: Request):
         header_idx = 0
         for i, line in enumerate(lines):
             # 表头应该包含时间或血糖相关关键词（中英文）
-            if any(k in line.lower() for k in ['time', 'date', 'glucose', 'value', '血糖', '时间', 'sg', 'glucose']):
+            # 且不能是纯中文名字或其他非数据行
+            lower_line = line.lower()
+            is_header = any(k in lower_line for k in ['time', 'date', 'glucose', 'value', '血糖', '时间', 'sg', 'glucose'])
+            # 跳过纯中文行（名字、标题等）
+            is_chinese_only = all('\u4e00' <= c <= '\u9fff' for c in line.replace(',', '').replace('\t', '').replace(' ', ''))
+            # 也跳过纯数字开头的行（可能是无表头的数据行）
+            is_data_row = line[0].isdigit() if line else False
+            if is_data_row:
+                header_idx = i
+                break
+            if is_header and not is_chinese_only:
                 header_idx = i
                 break  # 找到表头就跳出
         
@@ -836,20 +846,42 @@ async def api_cgm_analyze(request: Request):
             # CSV 格式
             df = pd.read_csv(io.StringIO(data_text), on_bad_lines='skip')
         else:
-            # 空格分隔
-            df = pd.read_csv(io.StringIO(data_text), sep=r'\s+', on_bad_lines='skip')
+            # 空格分隔 - 可能是无表头数据
+            df = pd.read_csv(io.StringIO(data_text), sep=r'\s+', on_bad_lines='skip', header=None)
         
         # 标准化列名
-        cols = [c.lower() for c in df.columns]
+        cols = df.columns.tolist()
         
-        time_col = next((c for c in df.columns if any(k in c.lower() for k in ['time', 'date', 'timestamp', '时间', '日期'])), None)
-        glucose_col = next((c for c in df.columns if any(k in c.lower() for k in ['glucose', 'value', 'sg', '血糖', 'mg'])), None)
+        # 无表头时尝试识别：第1列是ID，第2+3列是时间，第4列是葡萄糖
+        if len(cols) >= 4 and not any('time' in str(c).lower() or 'date' in str(c).lower() or 'glucose' in str(c).lower() for c in cols):
+            # 无表头数据，重新命名列
+            df.columns = ['id', 'date', 'time', 'record_type', 'glucose'] + [f'col_{i}' for i in range(5, len(cols))]
+            # 合并日期和时间列
+            if 'date' in df.columns and 'time' in df.columns:
+                df['datetime'] = df['date'].astype(str) + ' ' + df['time'].astype(str)
+                time_col = 'datetime'
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['timestamp', 'datetime', '日期时间'])), None)
+        if not time_col:
+            # 尝试找日期+时间组合
+            if 'date' in df.columns and 'time' in df.columns:
+                df['datetime'] = df['date'].astype(str) + ' ' + df['time'].astype(str)
+                time_col = 'datetime'
+            else:
+                time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间', '日期'])), None)
+        
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖', 'mg', 'mmol'])), None)
         
         if not time_col or not glucose_col:
             return {"error": f"未找到时间或血糖列。检测到的列: {list(df.columns)}"}
         
         df['timestamp'] = pd.to_datetime(df[time_col])
         df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        
+        # mmol/L 转 mg/dL (如果值小于 30，说明是 mmol/L)
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        
         df = df.dropna(subset=['glucose']).sort_values('timestamp')
         
         results = analyze_glucose(df)
