@@ -854,12 +854,9 @@ async def api_cgm_analyze(request: Request):
         
         # 无表头时尝试识别：第1列是ID，第2+3列是时间，第4列是葡萄糖
         if len(cols) >= 4 and not any('time' in str(c).lower() or 'date' in str(c).lower() or 'glucose' in str(c).lower() for c in cols):
-            # 无表头数据，重新命名列
-            df.columns = ['id', 'date', 'time', 'record_type', 'glucose'] + [f'col_{i}' for i in range(5, len(cols))]
-            # 合并日期和时间列
-            if 'date' in df.columns and 'time' in df.columns:
-                df['datetime'] = df['date'].astype(str) + ' ' + df['time'].astype(str)
-                time_col = 'datetime'
+            # 根据实际列数命名
+            col_names = ['id', 'date', 'time', 'record_type', 'glucose'][:len(cols)]
+            df.columns = col_names
         
         time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['timestamp', 'datetime', '日期时间'])), None)
         if not time_col:
