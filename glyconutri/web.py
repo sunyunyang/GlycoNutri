@@ -320,6 +320,7 @@ HTML_HOME = """
             <div class="tabs">
                 <div class="tab active" data-tab="cgm">📊 CGM 分析</div>
                 <div class="tab" data-tab="meal">🍽️ 餐后分析</div>
+                <div class="tab" data-tab="meal-nutrition">🥗 餐食分析</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
             </div>
@@ -389,6 +390,38 @@ HTML_HOME = """
                     </button>
                     
                     <div id="mealResult"></div>
+                </div>
+                
+                <!-- 餐食营养分析 (新) -->
+                <div class="tab-content" id="meal-nutrition">
+                    <div class="form-group">
+                        <label>🍽️ 餐次</label>
+                        <select id="nutritionMealType">
+                            <option value="早餐">早餐</option>
+                            <option value="午餐">午餐</option>
+                            <option value="晚餐">晚餐</option>
+                            <option value="加餐">加餐</option>
+                        </select>
+                    </div>
+                    
+                    <label>🥗 食物列表</label>
+                    <div class="food-list" id="nutritionFoodList">
+                        <div class="food-item">
+                            <input type="text" placeholder="食物名称 (如: 米饭)" class="food-name-nutrition">
+                            <input type="number" placeholder="重量(g)" class="food-weight-nutrition" value="100">
+                            <button class="btn-remove" onclick="removeNutritionFood(this)">×</button>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-secondary" onclick="addNutritionFood()" style="margin-bottom: 24px;">
+                        + 添加食物
+                    </button>
+                    
+                    <button class="btn" onclick="analyzeNutrition()" style="width: 100%;">
+                        分析餐食营养
+                    </button>
+                    
+                    <div id="nutritionResult"></div>
                 </div>
                 
                 <!-- 食物查询 -->
@@ -501,9 +534,148 @@ HTML_HOME = """
         }
         
         function removeFood(btn) {
-            const items = document.querySelectorAll('.food-item');
+            const items = document.querySelectorAll('#foodList .food-item');
             if (items.length > 1) btn.parentElement.remove();
         }
+        
+        // 餐食营养分析 - 添加食物
+        let nutritionFoodCount = 1;
+        function addNutritionFood() {
+            const div = document.createElement('div');
+            div.className = 'food-item';
+            div.innerHTML = `
+                <input type="text" placeholder="食物名称" class="food-name-nutrition">
+                <input type="number" placeholder="重量(g)" class="food-weight-nutrition" value="100">
+                <button class="btn-remove" onclick="removeNutritionFood(this)">×</button>
+            `;
+            document.getElementById('nutritionFoodList').appendChild(div);
+            nutritionFoodCount++;
+        }
+        
+        function removeNutritionFood(btn) {
+            const items = document.querySelectorAll('#nutritionFoodList .food-item');
+            if (items.length > 1) btn.parentElement.remove();
+        }
+        
+        // 餐食营养分析
+        async function analyzeNutrition() {
+            const mealType = document.getElementById('nutritionMealType').value;
+            const foodItems = document.querySelectorAll('#nutritionFoodList .food-item');
+            
+            const foods = [];
+            foodItems.forEach(item => {
+                const name = item.querySelector('.food-name-nutrition').value;
+                const weight = parseFloat(item.querySelector('.food-weight-nutrition').value) || 100;
+                if (name) foods.push({name, weight});
+            });
+            
+            if (foods.length === 0) {
+                alert('请添加食物');
+                return;
+            }
+            
+            document.getElementById('nutritionResult').innerHTML = '<div class="loading"><div class="spinner"></div>分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/meal/nutrition', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        meal_name: mealType,
+                        foods: foods
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('nutritionResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">${data.error}</p></div>`;
+                    return;
+                }
+                
+                const m = data.meal.summary;
+                const balance = data.nutrition_balance;
+                const glycemic = data.glycemic_risk;
+                const recs = data.recommendations;
+                
+                let foodsHtml = data.meal.foods.map(f => `
+                    <div class="food-result-item">
+                        <div>
+                            <div class="name">${f.name} (${f.weight}g)</div>
+                            <div class="details">碳水: ${f.carbs}g | 蛋白: ${f.protein}g | 脂肪: ${f.fat}g</div>
+                        </div>
+                        <span class="tag tag-${f.gl < 10 ? 'low' : f.gl < 20 ? 'medium' : 'high'}">GL: ${f.gl}</span>
+                    </div>
+                `).join('');
+                
+                document.getElementById('nutritionResult').innerHTML = `
+                    <div class="result-card">
+                        <h3>🥗 ${mealType} 营养分析</h3>
+                        
+                        <h4 style="margin:16px 0 8px">食物列表</h4>
+                        ${foodsHtml}
+                        
+                        <h4 style="margin:16px 0 8px">营养汇总</h4>
+                        <div class="result-grid">
+                            <div class="result-item">
+                                <div class="value">${m.total_carbs}g</div>
+                                <div class="label">碳水</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${m.total_protein}g</div>
+                                <div class="label">蛋白质</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${m.total_fat}g</div>
+                                <div class="label">脂肪</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${m.total_fiber}g</div>
+                                <div class="label">纤维</div>
+                            </div>
+                        </div>
+                        
+                        <h4 style="margin:16px 0 8px">升糖效应</h4>
+                        <div class="result-grid">
+                            <div class="result-item">
+                                <div class="value">${m.weighted_gi}</div>
+                                <div class="label">加权GI</div>
+                            </div>
+                            <div class="result-item highlight">
+                                <div class="value">${m.total_gl}</div>
+                                <div class="label">总GL</div>
+                            </div>
+                        </div>
+                        
+                        <h4 style="margin:16px 0 8px">营养结构</h4>
+                        <div style="display:flex;gap:8px;margin-bottom:8px">
+                            <span class="tag" style="background:#fef3c7">碳水 ${balance.ratio.carbs}%</span>
+                            <span class="tag" style="background:#dbeafe">蛋白 ${balance.ratio.protein}%</span>
+                            <span class="tag" style="background:#fce7f3">脂肪 ${balance.ratio.fat}%</span>
+                        </div>
+                        
+                        <h4 style="margin:16px 0 8px">评估</h4>
+                        <div style="padding:12px;background:#f0fdf4;border-radius:8px;margin-bottom:16px">
+                            <strong>${recs.summary}</strong>
+                        </div>
+                        
+                        ${recs.recommendations.length > 0 ? `
+                        <h4 style="margin:16px 0 8px">建议</h4>
+                        <ul style="padding-left:20px;color:#374151">
+                            ${recs.recommendations.map(r => `<li style="margin-bottom:4px">${r.suggestion}</li>`).join('')}
+                        </ul>
+                        ` : ''}
+                    </div>
+                `;
+                
+                // 保存到历史记录
+                saveToHistory('meal-nutrition', mealType, data);
+                
+            } catch (e) {
+                document.getElementById('nutritionResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">错误: ${e.message}</p></div>`;
+            }
+        }
+        
+        // 保存到历史记录
         
         // 更新食物信息
         async function updateFoodInfo(input) {
@@ -988,6 +1160,28 @@ async def api_meal_analyze(request: Request):
         result["glucose_response"] = {}
     
     return result
+
+
+@app.post("/api/meal/nutrition")
+async def api_meal_nutrition(request: Request):
+    """餐食营养分析 (无需CGM)"""
+    from glyconutri.meal import analyze_meal
+    
+    body = await request.json()
+    
+    foods = body.get('foods', [])
+    meal_name = body.get('meal_name', '早餐')
+    timestamp = body.get('timestamp')
+    
+    if not foods:
+        return {"error": "请提供食物列表"}
+    
+    try:
+        ts = datetime.fromisoformat(timestamp.replace('Z', '+00:00')) if timestamp else datetime.now()
+        result = analyze_meal(foods, ts, meal_name)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
