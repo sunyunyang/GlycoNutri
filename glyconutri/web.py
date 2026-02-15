@@ -325,6 +325,7 @@ HTML_HOME = """
                 <div class="tab" data-tab="exercise">🏃 运动分析</div>
                 <div class="tab" data-tab="sleep">😴 睡眠分析</div>
                 <div class="tab" data-tab="medication">💊 药物分析</div>
+                <div class="tab" data-tab="settings">⚙️ 设置</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
             </div>
@@ -603,6 +604,46 @@ HTML_HOME = """
                     </div>
                     
                     <div id="foodResult"></div>
+                </div>
+                
+                <!-- 设置 -->
+                <div class="tab-content" id="settings">
+                    <div class="form-group">
+                        <label>⚙️ 血糖目标范围设置</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">自定义您的血糖目标范围</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>低血糖阈值 (mg/dL)</label>
+                        <input type="number" id="settingLowThreshold" value="70" min="50" max="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>高血糖阈值 (mg/dL)</label>
+                        <input type="number" id="settingHighThreshold" value="180" min="140" max="300">
+                    </div>
+                    
+                    <button class="btn" onclick="saveSettings()" style="width: 100%;">
+                        保存设置
+                    </button>
+                    
+                    <div id="settingsResult" style="margin-top:16px"></div>
+                    
+                    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e5e7eb">
+                        <h4 style="margin-bottom:12px">提醒设置</h4>
+                        
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="settingLowAlert"> 低血糖提醒 (<span id="lowThresholdDisplay">70</span> mg/dL)
+                            </label>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="settingHighAlert"> 高血糖提醒 (> <span id="highThresholdDisplay">180</span> mg/dL)
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- 历史记录 -->
@@ -1277,6 +1318,51 @@ HTML_HOME = """
             document.getElementById('foodResult').innerHTML = html;
         }
         
+        // 设置相关
+        function loadSettings() {
+            const settings = JSON.parse(localStorage.getItem('glyconutri_settings') || '{}');
+            if (settings.lowThreshold) {
+                document.getElementById('settingLowThreshold').value = settings.lowThreshold;
+                document.getElementById('lowThresholdDisplay').textContent = settings.lowThreshold;
+            }
+            if (settings.highThreshold) {
+                document.getElementById('settingHighThreshold').value = settings.highThreshold;
+                document.getElementById('highThresholdDisplay').textContent = settings.highThreshold;
+            }
+            if (settings.lowAlert !== undefined) {
+                document.getElementById('settingLowAlert').checked = settings.lowAlert;
+            }
+            if (settings.highAlert !== undefined) {
+                document.getElementById('settingHighAlert').checked = settings.highAlert;
+            }
+        }
+        
+        function saveSettings() {
+            const lowThreshold = parseInt(document.getElementById('settingLowThreshold').value);
+            const highThreshold = parseInt(document.getElementById('settingHighThreshold').value);
+            const lowAlert = document.getElementById('settingLowAlert').checked;
+            const highAlert = document.getElementById('settingHighAlert').checked;
+            
+            if (lowThreshold >= highThreshold) {
+                alert('低血糖阈值必须小于高血糖阈值');
+                return;
+            }
+            
+            const settings = {
+                lowThreshold,
+                highThreshold,
+                lowAlert,
+                highAlert
+            };
+            
+            localStorage.setItem('glyconutri_settings', JSON.stringify(settings));
+            
+            document.getElementById('lowThresholdDisplay').textContent = lowThreshold;
+            document.getElementById('highThresholdDisplay').textContent = highThreshold;
+            
+            document.getElementById('settingsResult').innerHTML = '<div style="color:#16a34a;padding:8px;background:#dcfce7;border-radius:8px">设置已保存</div>';
+        }
+        
         // 历史记录
         function saveHistory(type, data) {
             const history = JSON.parse(localStorage.getItem('glyconutri_history') || '[]');
@@ -1635,6 +1721,7 @@ HTML_HOME = """
         document.getElementById('exerciseTime').value = new Date(now.setHours(now.getHours() - 1, 0, 0, 0)).toISOString().slice(0, 16);
         document.getElementById('medicationTime').value = new Date().toISOString().slice(0, 16);
         
+        loadSettings();
         loadHistory();
     </script>
 </body>
