@@ -1,292 +1,311 @@
 """
-GlycoNutri Web API
+GlycoNutri Web - 完整版
 """
 
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from typing import List, Optional
 import pandas as pd
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
+import base64
+import io
 
 from glyconutri.cgm_adapters import load_cgm_data
 from glyconutri.cgm import calculate_tir, calculate_gv
-from glyconutri.food import get_food_info, search_foods
+from glyconutri.food import get_food_info, search_foods, list_foods_by_gi_category
 from glyconutri.analysis import analyze_glucose
-from glyconutri.postmeal import PostMealAnalysis, create_meal_session
+from glyconutri.postmeal import PostMealAnalysis, create_meal_session, RepeatedMealAnalyzer
 
-app = FastAPI(title="GlycoNutri API")
+app = FastAPI(title="GlycoNutri", version="0.4")
 
-# ============ API 端点 ============
+# 确保上传目录存在
+UPLOAD_DIR = "/tmp/glyconutri_uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@app.get("/api/foods/search")
-def api_search_foods(q: str):
-    """搜索食物"""
-    results = search_foods(q)
-    return {"results": results[:10]}
+# ============ 首页 ============
 
-
-@app.get("/api/foods/{food_name}")
-def api_get_food(food_name: str, weight: float = None):
-    """获取食物信息"""
-    carbs = None
-    if weight:
-        from glyconutri.gi_database import get_carbs
-        carbs_per_100g = get_carbs(food_name)
-        if carbs_per_100g:
-            carbs = carbs_per_100g * weight / 100
-    
-    info = get_food_info(food_name, carbs)
-    return info or {"error": "未找到该食物"}
-
-
-@app.post("/api/analyze")
-async def api_analyze(
-    file: UploadFile = File(None),
-    device: str = Form("auto")
-):
-    """分析 CGM 数据"""
-    if not file:
-        return {"error": "请上传 CGM 数据文件"}
-    
-    # 保存临时文件
-    import tempfile
-    import os
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix=file.filename) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-    
-    try:
-        df = load_cgm_data(tmp_path, device)
-        results = analyze_glucose(df)
-        
-        return {
-            "success": True,
-            "data_points": len(df),
-            "time_range": {
-                "start": df['timestamp'].min().isoformat(),
-                "end": df['timestamp'].max().isoformat()
-            },
-            "results": results
-        }
-    except Exception as e:
-        return {"error": str(e)}
-    finally:
-        os.unlink(tmp_path)
-
-
-@app.post("/api/meal/analyze")
-def api_meal_analyze(
-    cgm_data: str = Form(...),
-    foods: str = Form(...),
-    meal_time: str = Form(...)
-):
-    """餐后血糖分析"""
-    try:
-        # 解析 CGM 数据
-        cgm_json = json.loads(cgm_data)
-        df = pd.DataFrame(cgm_json)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        
-        # 解析食物
-        foods_list = json.loads(foods)
-        
-        # 解析时间
-        time_obj = datetime.fromisoformat(meal_time.replace('Z', '+00:00'))
-        
-        # 创建餐次
-        session = create_meal_session(foods_list, time_obj)
-        
-        # 分析
-        if not session.meals:
-            return {"error": "食物列表为空"}
-        
-        analysis = PostMealAnalysis(session.meals[0], df)
-        
-        baseline = analysis.calculate_baseline()
-        peak = analysis.calculate_peak()
-        response = analysis.response_magnitude()
-        iauc = analysis.calculate_incremental_auc()
-        
-        return {
-            "success": True,
-            "meal": {
-                "time": meal_time,
-                "foods": [m.to_dict() for m in session.meals],
-                "total_carbs": session.total_carbs,
-                "total_gl": session.total_gl,
-                "weighted_gi": session.weighted_gi
-            },
-            "glucose_response": {
-                "baseline": baseline,
-                "peak": peak,
-                "response_magnitude": response,
-                "iauc_2h": iauc
-            }
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ============ HTML 页面 ============
-
-HTML_TEMPLATE = """
+HTML_HOME = """
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GlycoNutri - 血糖营养计算工具</title>
+    <title>GlycoNutri - 血糖营养工具</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
             min-height: 100vh;
             padding: 20px;
+            color: #333;
         }
         .container {
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
+        }
+        
+        /* 头部 */
+        .header {
+            text-align: center;
+            color: white;
+            padding: 40px 0;
+        }
+        .header h1 {
+            font-size: 48px;
+            background: linear-gradient(135deg, #00d9ff, #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        .header p { font-size: 18px; opacity: 0.8; }
+        
+        /* 主卡片 */
+        .main-card {
             background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
             overflow: hidden;
         }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        .header h1 { font-size: 28px; margin-bottom: 8px; }
-        .header p { opacity: 0.9; font-size: 14px; }
         
+        /* 标签页 */
         .tabs {
             display: flex;
-            border-bottom: 1px solid #eee;
+            background: #f8f9fc;
+            border-bottom: 1px solid #e5e7eb;
         }
         .tab {
             flex: 1;
-            padding: 15px;
+            padding: 20px;
             text-align: center;
             cursor: pointer;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
-        }
-        .tab.active {
-            border-bottom-color: #667eea;
-            color: #667eea;
             font-weight: 600;
+            color: #6b7280;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+        }
+        .tab:hover { background: #f3f4f6; }
+        .tab.active {
+            color: #a855f7;
+            border-bottom-color: #a855f7;
+            background: white;
         }
         
+        /* 内容区 */
         .content { padding: 30px; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-weight: 500; color: #333; }
-        input[type="text"], input[type="number"], input[type="datetime-local"], select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #eee;
-            border-radius: 10px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+        /* 表单元素 */
+        .form-group { margin-bottom: 24px; }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #1f2937;
         }
-        input:focus { border-color: #667eea; outline: none; }
+        .help-text {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        input[type="text"], input[type="number"], input[type="datetime-local"], 
+        input[type="date"], select, textarea {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s;
+            background: #f9fafb;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: #a855f7;
+            outline: none;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(168,85,247,0.1);
+        }
         
+        /* 按钮 */
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #a855f7, #6366f1);
             color: white;
             border: none;
-            padding: 14px 30px;
-            border-radius: 10px;
+            padding: 16px 32px;
+            border-radius: 12px;
             font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
-            width: 100%;
-            transition: transform 0.2s;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
-        .btn:hover { transform: translateY(-2px); }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(168,85,247,0.3); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        .btn-secondary:hover { background: #e5e7eb; }
+        
+        .btn-danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        
+        /* 文件上传 */
+        .file-upload {
+            border: 3px dashed #e5e7eb;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .file-upload:hover { border-color: #a855f7; background: #faf5ff; }
+        .file-upload.dragover { border-color: #a855f7; background: #f3e8ff; }
+        
+        /* 食物列表 */
+        .food-list { margin-bottom: 20px; }
         .food-item {
             display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 12px;
+            margin-bottom: 12px;
             align-items: center;
+            padding: 16px;
+            background: #f9fafb;
+            border-radius: 12px;
         }
         .food-item input { flex: 1; }
-        .food-item .weight { width: 100px; }
-        .btn-add {
-            background: #eee;
-            color: #333;
-            padding: 10px;
-            margin-bottom: 20px;
+        .food-item .food-info {
+            flex: 2;
+            font-size: 14px;
+            color: #6b7280;
         }
         .btn-remove {
-            background: #ff6b6b;
-            color: white;
-            border: none;
             width: 40px;
             height: 40px;
-            border-radius: 8px;
+            border-radius: 10px;
+            border: none;
+            background: #fee2e2;
+            color: #dc2626;
             cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
-        .result {
-            background: #f8f9ff;
-            border-radius: 15px;
-            padding: 20px;
-            margin-top: 20px;
+        /* 结果展示 */
+        .result-card {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 24px;
         }
-        .result h3 { color: #667eea; margin-bottom: 15px; }
+        .result-card h3 {
+            color: #0369a1;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+        
         .result-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
         }
         .result-item {
             background: white;
-            padding: 15px;
-            border-radius: 10px;
+            padding: 20px;
+            border-radius: 12px;
             text-align: center;
-        }
-        .result-item .value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #333;
-        }
-        .result-item .label {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
         .result-item.highlight {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #a855f7, #6366f1);
             color: white;
         }
-        .result-item.highlight .value, .result-item.highlight .label { color: white; }
-        
-        .food-result {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 10px;
+        .result-item .value {
+            font-size: 32px;
+            font-weight: bold;
         }
-        .food-result .name { font-weight: 600; color: #333; }
-        .food-result .info { font-size: 14px; color: #666; margin-top: 5px; }
+        .result-item .label {
+            font-size: 13px;
+            margin-top: 4px;
+            opacity: 0.8;
+        }
         
+        /* 食物结果 */
+        .food-result-item {
+            background: white;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .food-result-item .name { font-weight: 600; }
+        .food-result-item .details { font-size: 14px; color: #6b7280; }
+        
+        /* 标签 */
+        .tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .tag-low { background: #dcfce7; color: #166534; }
+        .tag-medium { background: #fef3c7; color: #92400e; }
+        .tag-high { background: #fee2e2; color: #dc2626; }
+        
+        /* 加载动画 */
         .loading {
             text-align: center;
             padding: 40px;
-            color: #666;
+            color: #6b7280;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #a855f7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* 历史记录 */
+        .history-item {
+            padding: 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .history-item:last-child { border-bottom: none; }
+        .history-time { font-size: 14px; color: #6b7280; }
+        .history-foods { margin-top: 8px; }
+        
+        /* 页脚 */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: rgba(255,255,255,0.6);
+            font-size: 14px;
         }
         
-        @media (max-width: 600px) {
-            .result-grid { grid-template-columns: 1fr; }
+        @media (max-width: 768px) {
+            .header h1 { font-size: 32px; }
+            .tabs { flex-wrap: wrap; }
+            .tab { flex: none; width: 33.33%; }
+            .food-item { flex-direction: column; align-items: stretch; }
         }
     </style>
 </head>
@@ -294,69 +313,125 @@ HTML_TEMPLATE = """
     <div class="container">
         <div class="header">
             <h1>🩸 GlycoNutri</h1>
-            <p>血糖营养计算工具 for 医生</p>
+            <p>血糖营养计算工具 for 医生 & 患者</p>
         </div>
         
-        <div class="tabs">
-            <div class="tab active" data-tab="cgm">CGM 分析</div>
-            <div class="tab" data-tab="meal">餐后分析</div>
-            <div class="tab" data-tab="food">食物查询</div>
-        </div>
-        
-        <div class="content">
-            <!-- CGM 分析 -->
-            <div class="tab-content active" id="cgm">
-                <div class="form-group">
-                    <label>上传 CGM 数据文件</label>
-                    <input type="file" id="cgmFile" accept=".csv,.json">
-                </div>
-                <div class="form-group">
-                    <label>设备类型</label>
-                    <select id="cgmDevice">
-                        <option value="auto">自动检测</option>
-                        <option value="dexcom">Dexcom</option>
-                        <option value="libre">FreeStyle Libre</option>
-                        <option value="medtronic">Medtronic</option>
-                    </select>
-                </div>
-                <button class="btn" onclick="analyzeCGM()">分析血糖数据</button>
-                <div id="cgmResult"></div>
+        <div class="main-card">
+            <div class="tabs">
+                <div class="tab active" data-tab="cgm">📊 CGM 分析</div>
+                <div class="tab" data-tab="meal">🍽️ 餐后分析</div>
+                <div class="tab" data-tab="food">🔍 食物查询</div>
+                <div class="tab" data-tab="history">📋 历史记录</div>
             </div>
             
-            <!-- 餐后分析 -->
-            <div class="tab-content" id="meal">
-                <div class="form-group">
-                    <label>餐食时间</label>
-                    <input type="datetime-local" id="mealTime">
-                </div>
-                <div class="form-group">
-                    <label>食物列表</label>
-                    <div id="foodList">
-                        <div class="food-item">
-                            <input type="text" placeholder="食物名称" class="food-name">
-                            <input type="number" placeholder="重量(g)" class="food-weight">
-                            <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
+            <div class="content">
+                <!-- CGM 分析 -->
+                <div class="tab-content active" id="cgm">
+                    <div class="file-upload" id="dropZone">
+                        <input type="file" id="cgmFile" accept=".csv,.json" style="display:none">
+                        <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
+                        <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">
+                            点击或拖拽上传 CGM 数据
+                        </div>
+                        <div style="color: #6b7280;">
+                            支持 CSV、JSON 格式 (Dexcom, Libre, Medtronic)
                         </div>
                     </div>
-                    <button class="btn btn-add" onclick="addFood()">+ 添加食物</button>
+                    
+                    <div class="form-group" style="margin-top: 24px;">
+                        <label>或手动输入血糖数据</label>
+                        <textarea id="cgmText" rows="4" placeholder="格式: timestamp,glucose
+2026-02-15 08:00,95
+2026-02-15 08:15,98
+..."></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeCGM()" style="width: 100%;">
+                        分析血糖数据
+                    </button>
+                    
+                    <div id="cgmResult"></div>
                 </div>
-                <button class="btn" onclick="analyzeMeal()">分析餐后血糖</button>
-                <div id="mealResult"></div>
-            </div>
-            
-            <!-- 食物查询 -->
-            <div class="tab-content" id="food">
-                <div class="form-group">
-                    <label>搜索食物</label>
-                    <input type="text" id="foodSearch" placeholder="输入食物名称，如：米饭、苹果">
+                
+                <!-- 餐后分析 -->
+                <div class="tab-content" id="meal">
+                    <div class="form-group">
+                        <label>📅 餐食时间</label>
+                        <input type="datetime-local" id="mealTime">
+                    </div>
+                    
+                    <label>🍎 食物列表</label>
+                    <div class="food-list" id="foodList">
+                        <div class="food-item">
+                            <input type="text" placeholder="食物名称 (如: 米饭)" class="food-name">
+                            <input type="number" placeholder="重量(g)" class="food-weight" value="100">
+                            <div class="food-info" id="foodInfo0"></div>
+                            <button class="btn-remove" onclick="removeFood(this)">×</button>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-secondary" onclick="addFood()" style="margin-bottom: 24px;">
+                        + 添加食物
+                    </button>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据 (餐后分析必需)</label>
+                        <div class="file-upload" id="cgmDropZone" style="padding: 20px;">
+                            <input type="file" id="mealCgmFile" accept=".csv,.json" style="display:none">
+                            <div>点击上传 CGM 数据文件</div>
+                        </div>
+                        <div class="help-text">或直接输入血糖数据</div>
+                        <textarea id="mealCgmText" rows="3" placeholder="timestamp,glucose 格式"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeMeal()" style="width: 100%;">
+                        分析餐后血糖响应
+                    </button>
+                    
+                    <div id="mealResult"></div>
                 </div>
-                <button class="btn" onclick="searchFood()">搜索</button>
-                <div id="foodResult"></div>
+                
+                <!-- 食物查询 -->
+                <div class="tab-content" id="food">
+                    <div class="form-group">
+                        <label>🔍 搜索食物</label>
+                        <input type="text" id="foodSearch" placeholder="输入食物名称，如：米饭、苹果、香蕉">
+                    </div>
+                    
+                    <button class="btn" onclick="searchFood()" style="width: 100%; margin-bottom: 24px;">
+                        搜索
+                    </button>
+                    
+                    <div class="form-group">
+                        <label>或按 GI 类别浏览</label>
+                        <div style="display: flex; gap: 12px;">
+                            <button class="btn btn-secondary" onclick="browseGI('低')">低 GI</button>
+                            <button class="btn btn-secondary" onclick="browseGI('中')">中 GI</button>
+                            <button class="btn btn-secondary" onclick="browseGI('高')">高 GI</button>
+                        </div>
+                    </div>
+                    
+                    <div id="foodResult"></div>
+                </div>
+                
+                <!-- 历史记录 -->
+                <div class="tab-content" id="history">
+                    <div id="historyList">
+                        <div class="loading">暂无历史记录</div>
+                    </div>
+                </div>
             </div>
+        </div>
+        
+        <div class="footer">
+            GlycoNutri v0.4 | 血糖营养计算工具
         </div>
     </div>
     
     <script>
+        // 全局变量
+        let cgmData = null;
+        
         // Tab 切换
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -367,75 +442,123 @@ HTML_TEMPLATE = """
             });
         });
         
+        // 文件上传
+        const setupFileUpload = (dropZoneId, fileInputId, callback) => {
+            const dropZone = document.getElementById(dropZoneId);
+            const fileInput = document.getElementById(fileInputId);
+            
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length) {
+                    fileInput.files = e.dataTransfer.files;
+                    callback(e.dataTransfer.files[0]);
+                }
+            });
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) callback(fileInput.files[0]);
+            });
+        };
+        
+        setupFileUpload('dropZone', 'cgmFile', (file) => {
+            document.getElementById('cgmResult').innerHTML = '<div class="loading"><div class="spinner"></div>正在读取文件...</div>';
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                document.getElementById('cgmText').value = text;
+                analyzeCGM();
+            };
+            reader.readAsText(file);
+        });
+        
+        setupFileUpload('cgmDropZone', 'mealCgmFile', (file) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('mealCgmText').value = e.target.result;
+            };
+            reader.readAsText(file);
+        });
+        
         // 添加食物
+        let foodCount = 1;
         function addFood() {
             const div = document.createElement('div');
             div.className = 'food-item';
             div.innerHTML = `
-                <input type="text" placeholder="食物名称" class="food-name">
-                <input type="number" placeholder="重量(g)" class="food-weight">
-                <button class="btn-remove" onclick="this.parentElement.remove()">×</button>
+                <input type="text" placeholder="食物名称" class="food-name" onchange="updateFoodInfo(this)">
+                <input type="number" placeholder="重量(g)" class="food-weight" value="100" onchange="updateFoodInfo(this)">
+                <div class="food-info" id="foodInfo${foodCount}"></div>
+                <button class="btn-remove" onclick="removeFood(this)">×</button>
             `;
             document.getElementById('foodList').appendChild(div);
+            foodCount++;
         }
         
-        // 搜索食物
-        async function searchFood() {
-            const query = document.getElementById('foodSearch').value;
-            if (!query) return;
+        function removeFood(btn) {
+            const items = document.querySelectorAll('.food-item');
+            if (items.length > 1) btn.parentElement.remove();
+        }
+        
+        // 更新食物信息
+        async function updateFoodInfo(input) {
+            const item = input.parentElement;
+            const name = item.querySelector('.food-name').value;
+            const weight = parseFloat(item.querySelector('.food-weight').value) || 100;
+            const infoDiv = item.querySelector('.food-info');
             
-            const res = await fetch(`/api/foods/search?q=${encodeURIComponent(query)}`);
-            const data = await res.json();
+            if (!name) return;
             
-            let html = '<div class="result">';
-            html += '<h3>搜索结果</h3>';
-            if (data.results && data.results.length > 0) {
-                data.results.forEach(f => {
-                    html += `
-                        <div class="food-result">
-                            <div class="name">${f.name}</div>
-                            <div class="info">GI: ${f.gi} (${f.gi_category}GI) | 碳水: ${f.carbs_per_100g || 'N/A'}g/100g</div>
-                        </div>
+            try {
+                const res = await fetch(`/api/food/info?name=${encodeURIComponent(name)}&weight=${weight}`);
+                const data = await res.json();
+                
+                if (data.gi) {
+                    const gl = (data.gi * (data.carbs || 0) / 100).toFixed(1);
+                    infoDiv.innerHTML = `
+                        <span class="tag tag-${data.gi_category === '低' ? 'low' : data.gi_category === '中' ? 'medium' : 'high'}">
+                            GI: ${data.gi}
+                        </span>
+                        ${data.carbs ? `<span style="margin-left:8px">碳水: ${data.carbs.toFixed(1)}g</span>` : ''}
+                        ${gl > 0 ? `<span style="margin-left:8px">GL: ${gl}</span>` : ''}
                     `;
-                });
-            } else {
-                html += '<p>未找到匹配的食物</p>';
-            }
-            html += '</div>';
-            document.getElementById('foodResult').innerHTML = html;
+                }
+            } catch (e) {}
         }
         
         // 分析 CGM
         async function analyzeCGM() {
-            const fileInput = document.getElementById('cgmFile');
-            const device = document.getElementById('cgmDevice').value;
-            
-            if (!fileInput.files[0]) {
-                alert('请选择 CGM 数据文件');
+            const text = document.getElementById('cgmText').value;
+            if (!text.trim()) {
+                alert('请上传 CGM 文件或输入数据');
                 return;
             }
             
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            formData.append('device', device);
-            
-            document.getElementById('cgmResult').innerHTML = '<div class="loading">分析中...</div>';
+            document.getElementById('cgmResult').innerHTML = '<div class="loading"><div class="spinner"></div>分析中...</div>';
             
             try {
-                const res = await fetch('/api/analyze', {
+                const res = await fetch('/api/cgm/analyze', {
                     method: 'POST',
-                    body: formData
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
                 });
                 const data = await res.json();
                 
                 if (data.error) {
-                    document.getElementById('cgmResult').innerHTML = `<div class="result"><p style="color:red">${data.error}</p></div>`;
+                    document.getElementById('cgmResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">${data.error}</p></div>`;
                     return;
                 }
                 
                 const r = data.results;
+                cgmData = data.cgm_data;
+                
                 document.getElementById('cgmResult').innerHTML = `
-                    <div class="result">
+                    <div class="result-card">
                         <h3>📊 血糖分析结果</h3>
                         <div class="result-grid">
                             <div class="result-item highlight">
@@ -447,18 +570,33 @@ HTML_TEMPLATE = """
                                 <div class="label">血糖波动</div>
                             </div>
                             <div class="result-item">
-                                <div class="value">${r.mean_glucose.toFixed(1)}</div>
-                                <div class="label">平均血糖 (mg/dL)</div>
+                                <div class="value">${r.mean_glucose.toFixed(0)}</div>
+                                <div class="label">平均血糖</div>
                             </div>
                             <div class="result-item">
                                 <div class="value">${r.std_glucose.toFixed(1)}</div>
                                 <div class="label">标准差</div>
                             </div>
+                            <div class="result-item">
+                                <div class="value">${r.min_glucose.toFixed(0)}</div>
+                                <div class="label">最低血糖</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${r.max_glucose.toFixed(0)}</div>
+                                <div class="label">最高血糖</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:16px; font-size:14px; color:#6b7280">
+                            数据点数: ${data.data_points} | 时间: ${data.time_range}
                         </div>
                     </div>
                 `;
+                
+                // 保存到历史
+                saveHistory('cgm', {results: r, time_range: data.time_range});
+                
             } catch (e) {
-                document.getElementById('cgmResult').innerHTML = `<div class="result"><p style="color:red">错误: ${e}</p></div>`;
+                document.getElementById('cgmResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">错误: ${e}</p></div>`;
             }
         }
         
@@ -466,6 +604,7 @@ HTML_TEMPLATE = """
         async function analyzeMeal() {
             const mealTime = document.getElementById('mealTime').value;
             const foodItems = document.querySelectorAll('#foodList .food-item');
+            const cgmText = document.getElementById('mealCgmText').value;
             
             const foods = [];
             foodItems.forEach(item => {
@@ -475,16 +614,183 @@ HTML_TEMPLATE = """
             });
             
             if (!mealTime || foods.length === 0) {
-                alert('请填写餐食时间和至少一种食物');
+                alert('请填写餐食时间和食物');
                 return;
             }
             
-            // 这里需要 CGM 数据，暂时模拟
-            document.getElementById('mealResult').innerHTML = '<div class="loading">请先上传 CGM 数据进行餐后分析</div>';
+            document.getElementById('mealResult').innerHTML = '<div class="loading"><div class="spinner"></div>分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/meal/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        meal_time: mealTime,
+                        foods: foods,
+                        cgm_data: cgmText || (cgmData ? JSON.stringify(cgmData) : null)
+                    })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('mealResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">${data.error}</p></div>`;
+                    return;
+                }
+                
+                const m = data.meal;
+                const g = data.glucose_response;
+                
+                let foodsHtml = m.foods.map(f => `
+                    <div class="food-result-item">
+                        <div>
+                            <div class="name">${f.food_name} (${f.weight}g)</div>
+                            <div class="details">GI: ${f.gi} | 碳水: ${f.carbs?.toFixed(1)}g</div>
+                        </div>
+                        <span class="tag tag-${f.gl < 10 ? 'low' : f.gl < 20 ? 'medium' : 'high'}">GL: ${f.gl?.toFixed(1)}</span>
+                    </div>
+                `).join('');
+                
+                document.getElementById('mealResult').innerHTML = `
+                    <div class="result-card">
+                        <h3>🍽️ 餐后血糖分析</h3>
+                        <div style="margin-bottom:16px">
+                            <strong>餐食时间:</strong> ${mealTime}
+                        </div>
+                        <div style="margin-bottom:16px">
+                            <strong>食物:</strong>
+                            ${foodsHtml}
+                        </div>
+                        <div class="result-grid">
+                            <div class="result-item">
+                                <div class="value">${m.total_carbs?.toFixed(1)}g</div>
+                                <div class="label">总碳水</div>
+                            </div>
+                            <div class="result-item highlight">
+                                <div class="value">${m.total_gl?.toFixed(1)}</div>
+                                <div class="label">总 GL</div>
+                            </div>
+                            <div class="result-item">
+                                <div class="value">${m.weighted_gi?.toFixed(0)}</div>
+                                <div class="label">加权 GI</div>
+                            </div>
+                        </div>
+                        ${g.baseline ? `
+                        <div style="margin-top:16px; padding-top:16px; border-top:1px solid #e5e7eb">
+                            <strong>血糖响应:</strong>
+                            <div class="result-grid" style="margin-top:12px">
+                                <div class="result-item">
+                                    <div class="value">${g.baseline?.toFixed(0)}</div>
+                                    <div class="label">餐前基线</div>
+                                </div>
+                                <div class="result-item">
+                                    <div class="value">${g.peak?.toFixed(0)}</div>
+                                    <div class="label">餐后峰值</div>
+                                </div>
+                                <div class="result-item">
+                                    <div class="value">${g.response_magnitude?.toFixed(0)}</div>
+                                    <div class="label">血糖增幅</div>
+                                </div>
+                            </div>
+                        </div>
+                        ` : '<div style="margin-top:16px; color:#6b7280">⚠️ 请提供 CGM 数据以获取血糖响应分析</div>'}
+                    </div>
+                `;
+                
+                saveHistory('meal', {meal_time: mealTime, foods: m.foods, glucose_response: g});
+                
+            } catch (e) {
+                document.getElementById('mealResult').innerHTML = `<div class="result-card" style="background:#fee2e2"><p style="color:#dc2626">错误: ${e}</p></div>`;
+            }
         }
         
-        // 设置默认时间
+        // 搜索食物
+        async function searchFood() {
+            const query = document.getElementById('foodSearch').value;
+            if (!query) return;
+            
+            const res = await fetch(`/api/foods/search?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            
+            let html = '<div class="result-card">';
+            if (data.results && data.results.length > 0) {
+                data.results.forEach(f => {
+                    html += `
+                        <div class="food-result-item">
+                            <div>
+                                <div class="name">${f.name}</div>
+                                <div class="details">GI: ${f.gi} | 碳水: ${f.carbs_per_100g || 'N/A'}g/100g</div>
+                            </div>
+                            <span class="tag tag-${f.gi_category === '低' ? 'low' : f.gi_category === '中' ? 'medium' : 'high'}">${f.gi_category}GI</span>
+                        </div>
+                    `;
+                });
+            } else {
+                html += '<p>未找到匹配的食物</p>';
+            }
+            html += '</div>';
+            document.getElementById('foodResult').innerHTML = html;
+        }
+        
+        async function browseGI(category) {
+            const res = await fetch(`/api/foods/category/${category}`);
+            const data = await res.json();
+            
+            let html = `<div class="result-card"><h3>${category}GI 食物</h3>`;
+            data.foods.forEach(f => {
+                html += `
+                    <div class="food-result-item">
+                        <div>
+                            <div class="name">${f.name}</div>
+                            <div class="details">GI: ${f.gi} | 碳水: ${f.carbs_per_100g || 'N/A'}g</div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            document.getElementById('foodResult').innerHTML = html;
+        }
+        
+        // 历史记录
+        function saveHistory(type, data) {
+            const history = JSON.parse(localStorage.getItem('glyconutri_history') || '[]');
+            history.unshift({type, data, time: new Date().toISOString()});
+            localStorage.setItem('glyconutri_history', JSON.stringify(history.slice(0, 20)));
+        }
+        
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('glyconutri_history') || '[]');
+            if (history.length === 0) {
+                document.getElementById('historyList').innerHTML = '<div class="loading">暂无历史记录</div>';
+                return;
+            }
+            
+            let html = '';
+            history.forEach(h => {
+                const time = new Date(h.time).toLocaleString('zh-CN');
+                if (h.type === 'cgm') {
+                    html += `
+                        <div class="history-item">
+                            <div class="history-time">📊 ${time}</div>
+                            <div>TIR: ${h.data.results?.tir?.toFixed(1)}% | 平均血糖: ${h.data.results?.mean_glucose?.toFixed(0)}</div>
+                        </div>
+                    `;
+                } else if (h.type === 'meal') {
+                    const foods = h.data.foods?.map(f => f.food_name).join(', ') || '';
+                    html += `
+                        <div class="history-item">
+                            <div class="history-time">🍽️ ${time}</div>
+                            <div>${foods}</div>
+                            <div class="history-foods">GL: ${h.data.glucose_response?.total_gl || 'N/A'}</div>
+                        </div>
+                    `;
+                }
+            });
+            document.getElementById('historyList').innerHTML = html;
+        }
+        
+        // 初始化
         document.getElementById('mealTime').value = new Date().toISOString().slice(0, 16);
+        loadHistory();
     </script>
 </body>
 </html>
@@ -492,7 +798,137 @@ HTML_TEMPLATE = """
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    return HTML_TEMPLATE
+    return HTML_HOME
+
+# ============ API 端点 ============
+
+@app.post("/api/cgm/analyze")
+async def api_cgm_analyze(request: Request):
+    """分析 CGM 数据"""
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        # 解析数据
+        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        
+        # 检测格式
+        if ',' in lines[0]:
+            # CSV 格式
+            import io
+            df = pd.read_csv(io.StringIO(text))
+        else:
+            return {"error": "无法解析数据格式"}
+        
+        # 标准化列名
+        cols = [c.lower() for c in df.columns]
+        
+        time_col = next((c for c in df.columns if 'time' in c.lower() or 'date' in c.lower()), None)
+        glucose_col = next((c for c in df.columns if 'glucose' in c.lower() or 'value' in c.lower() or 'sg' in c.lower()), None)
+        
+        if not time_col or not glucose_col:
+            return {"error": "未找到时间或血糖列"}
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        results = analyze_glucose(df)
+        
+        # 返回简洁的 CGM 数据
+        cgm_data = df[['timestamp', 'glucose']].to_dict('records')
+        
+        return {
+            "success": True,
+            "data_points": len(df),
+            "time_range": f"{df['timestamp'].min().strftime('%m-%d %H:%M')} ~ {df['timestamp'].max().strftime('%m-%d %H:%M')}",
+            "results": results,
+            "cgm_data": cgm_data
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/foods/search")
+def api_search_foods(q: str):
+    """搜索食物"""
+    results = search_foods(q)
+    return {"results": results[:15]}
+
+
+@app.get("/api/foods/category/{category}")
+def api_foods_by_category(category: str):
+    """按类别获取食物"""
+    foods = list_foods_by_gi_category(category)
+    return {"foods": foods[:30]}
+
+
+@app.get("/api/food/info")
+def api_food_info(name: str, weight: float = 100):
+    """获取食物详细信息"""
+    from glyconutri.gi_database import get_carbs
+    
+    carbs_per_100g = get_carbs(name)
+    carbs = carbs_per_100g * weight / 100 if carbs_per_100g else None
+    
+    info = get_food_info(name, carbs)
+    return info or {"error": "未找到"}
+
+
+@app.post("/api/meal/analyze")
+async def api_meal_analyze(request: Request):
+    """餐后血糖分析"""
+    body = await request.json()
+    
+    meal_time = body.get('meal_time')
+    foods = body.get('foods', [])
+    cgm_text = body.get('cgm_data')
+    
+    if not meal_time or not foods:
+        return {"error": "请提供餐食时间和食物"}
+    
+    # 计算食物营养
+    meal_session = create_meal_session(foods, datetime.fromisoformat(meal_time.replace('Z', '+00:00')))
+    
+    result = {
+        "success": True,
+        "meal": {
+            "foods": [m.to_dict() for m in meal_session.meals],
+            "total_carbs": meal_session.total_carbs,
+            "total_gl": meal_session.total_gl,
+            "weighted_gi": meal_session.weighted_gi
+        }
+    }
+    
+    # 如果有 CGM 数据，进行血糖响应分析
+    if cgm_text:
+        try:
+            if isinstance(cgm_text, str):
+                cgm_text = json.loads(cgm_text)
+            
+            if isinstance(cgm_text, list):
+                df = pd.DataFrame(cgm_text)
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+            else:
+                return {**result, "glucose_response": {}, "error": "CGM 数据格式有误"}
+            
+            analysis = PostMealAnalysis(meal_session.meals[0], df)
+            
+            result["glucose_response"] = {
+                "baseline": analysis.calculate_baseline(),
+                "peak": analysis.calculate_peak(),
+                "response_magnitude": analysis.response_magnitude(),
+                "iauc_2h": analysis.calculate_incremental_auc()
+            }
+            
+        except Exception as e:
+            result["glucose_response"] = {}
+            result["cgm_error"] = str(e)
+    else:
+        result["glucose_response"] = {}
+    
+    return result
 
 
 if __name__ == "__main__":
