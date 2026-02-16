@@ -328,6 +328,10 @@ HTML_HOME = """
                 <div class="tab" data-tab="sleep">😴 睡眠分析</div>
                 <div class="tab" data-tab="medication">💊 药物分析</div>
                 <div class="tab" data-tab="report">📋 报告</div>
+                <div class="tab" data-tab="alcohol">🍺 饮酒分析</div>
+                <div class="tab" data-tab="stress">😰 压力分析</div>
+                <div class="tab" data-tab="illness">🤒 疾病分析</div>
+                <div class="tab" data-tab="goals">🎯 目标追踪</div>
                 <div class="tab" data-tab="settings">⚙️ 设置</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
@@ -661,6 +665,81 @@ HTML_HOME = """
                     <div id="reportResult"></div>
                 </div>
                 
+                <!-- 饮酒分析 -->
+                <div class="tab-content" id="alcohol">
+                    <div class="form-group">
+                        <label>🍺 饮酒时间</label>
+                        <input type="datetime-local" id="alcoholTime">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据</label>
+                        <textarea id="alcoholCgmText" rows="6" placeholder="上传 CGM 数据"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeAlcohol()" style="width:100%">
+                        分析饮酒影响
+                    </button>
+                    
+                    <div id="alcoholResult"></div>
+                </div>
+                
+                <!-- 压力分析 -->
+                <div class="tab-content" id="stress">
+                    <div class="form-group">
+                        <label>😰 上传 CGM 数据</label>
+                        <textarea id="stressCgmText" rows="6" placeholder="上传 CGM 数据进行压力分析"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeStress()" style="width:100%">
+                        分析压力影响
+                    </button>
+                    
+                    <div id="stressResult"></div>
+                </div>
+                
+                <!-- 疾病分析 -->
+                <div class="tab-content" id="illness">
+                    <div class="form-group">
+                        <label>🤒 上传 CGM 数据</label>
+                        <textarea id="illnessCgmText" rows="6" placeholder="上传 CGM 数据进行疾病影响分析"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeIllness()" style="width:100%">
+                        分析疾病影响
+                    </button>
+                    
+                    <div id="illnessResult"></div>
+                </div>
+                
+                <!-- 目标追踪 -->
+                <div class="tab-content" id="goals">
+                    <div class="form-group">
+                        <label>🎯 设置您的目标</label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>TIR 目标 (%)</label>
+                        <input type="number" id="goalTir" value="70" min="0" max="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>平均血糖目标 (mg/dL)</label>
+                        <input type="number" id="goalMean" value="140" min="70" max="200">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>血糖波动目标 (GV %)</label>
+                        <input type="number" id="goalGv" value="20" min="5" max="50">
+                    </div>
+                    
+                    <button class="btn" onclick="checkGoals()" style="width:100%">
+                        检查目标达成
+                    </button>
+                    
+                    <div id="goalsResult"></div>
+                </div>
+                
                 <!-- 设置 -->
                 <div class="tab-content" id="settings">
                     <div class="form-group">
@@ -757,7 +836,7 @@ HTML_HOME = """
         </div>
         
         <div class="footer">
-            GlycoNutri v2.1 | 血糖营养计算工具
+            GlycoNutri v2.2 | 血糖营养计算工具
         </div>
     </div>
     
@@ -1314,7 +1393,203 @@ HTML_HOME = """
                 document.getElementById('biomarkerResult').innerHTML = `错误: ${e.message}`;
             }
         }
-        
+
+        // 饮酒分析
+        async function analyzeAlcohol() {
+            const timeStr = document.getElementById('alcoholTime').value;
+            const text = document.getElementById('alcoholCgmText').value;
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            const alcoholTime = timeStr ? new Date(timeStr).toISOString() : new Date().toISOString();
+            
+            document.getElementById('alcoholResult').innerHTML = '<div class="loading">分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/analysis/alcohol', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text, alcohol_time: alcoholTime})
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>🍺 饮酒影响分析</h3>';
+                
+                if (data.error) {
+                    html += `<p>${data.error}</p>`;
+                } else {
+                    if (data.baseline) {
+                        html += `<div class="result-grid">
+                            <div class="result-item"><div class="value">${data.baseline}</div><div class="label">饮酒前血糖</div></div>
+                        </div>`;
+                    }
+                    if (data.after) {
+                        html += `<div class="result-grid">
+                            <div class="result-item"><div class="value">${data.after.mean}</div><div class="label">饮酒后平均</div></div>
+                            <div class="result-item"><div class="value">${data.after.min}</div><div class="label">最低血糖</div></div>
+                            <div class="result-item"><div class="value">${data.after.max}</div><div class="label">最高血糖</div></div>
+                        </div>`;
+                    }
+                    html += `<div style="margin-top:12px;padding:12px;background:${data.hypoglycemia_risk === '高' ? '#fee2e2' : '#d1fae5'};border-radius:8px">
+                        低血糖风险: <strong>${data.hypoglycemia_risk}</strong>
+                        ${data.warning ? '<br>' + data.warning : ''}
+                    </div>`;
+                }
+                
+                html += '</div>';
+                document.getElementById('alcoholResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('alcoholResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+
+        // 压力分析
+        async function analyzeStress() {
+            const text = document.getElementById('stressCgmText').value;
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            document.getElementById('stressResult').innerHTML = '<div class="loading">分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/analysis/stress', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>😰 压力影响分析</h3>';
+                
+                if (data.error) {
+                    html += `<p>${data.error}</p>`;
+                } else {
+                    html += `<div class="result-grid">
+                        <div class="result-item highlight">
+                            <div class="value">${data.total_periods}</div>
+                            <div class="label">压力期数量</div>
+                        </div>
+                    </div>`;
+                    
+                    if (data.stress_periods && data.stress_periods.length > 0) {
+                        html += '<div style="margin-top:12px"><strong>压力期:</strong></div><ul style="padding-left:20px;margin-top:8px">';
+                        data.stress_periods.slice(0, 5).forEach(p => {
+                            html += `<li>${p.start.slice(0, 16)} - ${p.duration_hours}h, 平均 ${p.avg_glucose}</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
+                    html += `<div style="margin-top:12px;padding:12px;background:#fef3c7;border-radius:8px">${data.interpretation}</div>`;
+                }
+                
+                html += '</div>';
+                document.getElementById('stressResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('stressResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+
+        // 疾病分析
+        async function analyzeIllness() {
+            const text = document.getElementById('illnessCgmText').value;
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            document.getElementById('illnessResult').innerHTML = '<div class="loading">分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/analysis/illness', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>🤒 疾病影响分析</h3>';
+                
+                if (data.error) {
+                    html += `<p>${data.error}</p>`;
+                } else {
+                    if (data.unusual_volatility) {
+                        html += `<div style="margin:8px 0;padding:12px;background:#fee2e2;border-radius:8px">
+                            ⚠️ 检测到血糖异常波动<br>
+                            异常小时数: ${data.periods}<br>
+                            ${data.suggestion}
+                        </div>`;
+                    } else {
+                        html += `<div style="margin:8px 0;padding:12px;background:#d1fae5;border-radius:8px">
+                            ✓ 血糖波动正常，未检测到疾病影响
+                        </div>`;
+                    }
+                }
+                
+                html += '</div>';
+                document.getElementById('illnessResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('illnessResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+
+        // 目标追踪
+        async function checkGoals() {
+            const goalTir = parseFloat(document.getElementById('goalTir').value);
+            const goalMean = parseFloat(document.getElementById('goalMean').value);
+            const goalGv = parseFloat(document.getElementById('goalGv').value);
+            
+            const text = document.getElementById('cgmText')?.value;
+            
+            document.getElementById('goalsResult').innerHTML = '<div class="loading">检查中...</div>';
+            
+            try {
+                const res = await fetch('/api/analysis/goals', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        tir_goal: goalTir,
+                        mean_goal: goalMean,
+                        gv_goal: goalGv,
+                        data: text || ''
+                    })
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>🎯 目标达成情况</h3>';
+                
+                if (data.error) {
+                    html += `<p>${data.error}</p>`;
+                } else {
+                    html += '<div class="result-grid">';
+                    
+                    const tirStatus = data.actual_tir >= goalTir ? '✅' : '❌';
+                    html += `<div class="result-item ${data.actual_tir >= goalTir ? 'highlight' : ''}">
+                        <div class="value">${tirStatus} ${data.actual_tir}%</div>
+                        <div class="label">TIR (目标: ${goalTir}%)</div>
+                    </div>`;
+                    
+                    const meanStatus = data.actual_mean <= goalMean ? '✅' : '❌';
+                    html += `<div class="result-item ${data.actual_mean <= goalMean ? 'highlight' : ''}">
+                        <div class="value">${meanStatus} ${data.actual_mean}</div>
+                        <div class="label">平均血糖 (目标: <${goalMean})</div>
+                    </div>`;
+                    
+                    const gvStatus = data.actual_gv <= goalGv ? '✅' : '❌';
+                    html += `<div class="result-item ${data.actual_gv <= goalGv ? 'highlight' : ''}">
+                        <div class="value">${gvStatus} ${data.actual_gv}%</div>
+                        <div class="label">波动 (目标: <${goalGv}%)</div>
+                    </div>`;
+                    
+                    html += '</div>';
+                    
+                    const score = [data.actual_tir >= goalTir, data.actual_mean <= goalMean, data.actual_gv <= goalGv].filter(x => x).length;
+                    html += `<div style="margin-top:16px;padding:16px;background:#f3f4f6;border-radius:8px;text-align:center">
+                        <strong>达成率: ${Math.round(score/3*100)}%</strong> (${score}/3)
+                    </div>`;
+                }
+                
+                html += '</div>';
+                document.getElementById('goalsResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('goalsResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+
         // 生成报告
         async function generateReport() {
             const reportType = document.getElementById('reportType').value;
@@ -2778,3 +3053,152 @@ async def api_food_recognize(request: Request):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+@app.post("/api/analysis/alcohol")
+async def api_analysis_alcohol(request: Request):
+    """饮酒影响分析"""
+    from glyconutri.analysis_enhanced import analyze_alcohol
+    
+    body = await request.json()
+    text = body.get('data', '')
+    alcohol_time = body.get('alcohol_time')
+    
+    try:
+        from datetime import datetime
+        alcohol_dt = datetime.fromisoformat(alcohol_time.replace('Z', '+00:00'))
+        
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return analyze_alcohol(df, alcohol_dt)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/analysis/stress")
+async def api_analysis_stress(request: Request):
+    """压力分析"""
+    from glyconutri.analysis_enhanced import analyze_stress
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return analyze_stress(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/analysis/illness")
+async def api_analysis_illness(request: Request):
+    """疾病分析"""
+    from glyconutri.analysis_enhanced import analyze_illness
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return analyze_illness(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/analysis/goals")
+async def api_analysis_goals(request: Request):
+    """目标追踪"""
+    body = await request.json()
+    text = body.get('data', '')
+    tir_goal = body.get('tir_goal', 70)
+    mean_goal = body.get('mean_goal', 140)
+    gv_goal = body.get('gv_goal', 20)
+    
+    try:
+        if not text.strip():
+            return {"error": "需要CGM数据"}
+        
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        # 计算实际值
+        in_range = ((df['glucose'] >= 70) & (df['glucose'] <= 180)).sum()
+        actual_tir = round(in_range / len(df) * 100, 1)
+        actual_mean = round(df['glucose'].mean(), 1)
+        actual_gv = round(df['glucose'].std() / df['glucose'].mean() * 100, 1)
+        
+        return {
+            "actual_tir": actual_tir,
+            "actual_mean": actual_mean,
+            "actual_gv": actual_gv,
+            "tir_goal": tir_goal,
+            "mean_goal": mean_goal,
+            "gv_goal": gv_goal
+        }
+    except Exception as e:
+        return {"error": str(e)}
