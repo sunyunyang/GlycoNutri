@@ -332,6 +332,7 @@ HTML_HOME = """
                 <div class="tab" data-tab="stress">😰 压力分析</div>
                 <div class="tab" data-tab="illness">🤒 疾病分析</div>
                 <div class="tab" data-tab="goals">🎯 目标追踪</div>
+                <div class="tab" data-tab="menstrual">💊 生理期</div>
                 <div class="tab" data-tab="settings">⚙️ 设置</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
@@ -662,6 +663,10 @@ HTML_HOME = """
                         生成报告
                     </button>
                     
+                    <button class="btn btn-secondary" onclick="downloadPDF()" style="width: 100%; margin-top: 8px;">
+                        📥 下载 PDF
+                    </button>
+                    
                     <div id="reportResult"></div>
                 </div>
                 
@@ -738,6 +743,28 @@ HTML_HOME = """
                     </button>
                     
                     <div id="goalsResult"></div>
+                </div>
+                
+                <!-- 生理期分析 -->
+                <div class="tab-content" id="menstrual">
+                    <div class="form-group">
+                        <label>💊 生理期开始日期</label>
+                        <input type="date" id="menstrualStart">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据 (多日)</label>
+                        <textarea id="menstrualCgmText" rows="6" placeholder="上传多日CGM数据"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="addMenstrualPeriod()" style="width:48%;margin-right:2%">
+                        添加记录
+                    </button>
+                    <button class="btn" onclick="analyzeMenstrual()" style="width:48%">
+                        分析影响
+                    </button>
+                    
+                    <div id="menstrualResult"></div>
                 </div>
                 
                 <!-- 设置 -->
@@ -836,7 +863,7 @@ HTML_HOME = """
         </div>
         
         <div class="footer">
-            GlycoNutri v2.2 | 血糖营养计算工具
+            GlycoNutri v2.3 | 血糖营养计算工具
         </div>
     </div>
     
@@ -1590,6 +1617,66 @@ HTML_HOME = """
             }
         }
 
+        // 生理期分析
+        let menstrualLog = [];
+        
+        function addMenstrualPeriod() {
+            const startStr = document.getElementById('menstrualStart').value;
+            if (!startStr) { alert('请选择开始日期'); return; }
+            
+            menstrualLog.push({start: startStr});
+            
+            document.getElementById('menstrualResult').innerHTML = `<div style="margin-top:12px;padding:8px;background:#d1fae5;border-radius:8px">
+                已记录: ${startStr} <br>共 ${menstrualLog.length} 次记录
+            </div>`;
+        }
+        
+        async function analyzeMenstrual() {
+            const text = document.getElementById('menstrualCgmText').value;
+            
+            if (menstrualLog.length === 0) { alert('请先添加生理期记录'); return; }
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            document.getElementById('menstrualResult').innerHTML = '<div class="loading">分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/analysis/menstrual', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text, periods: menstrualLog})
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>💊 生理期血糖影响</h3>';
+                
+                if (data.error) {
+                    html += `<p>${data.error}</p>`;
+                } else if (data.menstrual_impact) {
+                    const impact = data.menstrual_impact;
+                    
+                    if (impact['经期 (Day 1-5)'] && impact['卵泡期 (Day 6-14)']) {
+                        html += `<div class="result-grid">
+                            <div class="result-item"><div class="value">${impact['经期 (Day 1-5)'].mean}</div><div class="label">经期平均</div></div>
+                            <div class="result-item"><div class="value">${impact['卵泡期 (Day 6-14)'].mean}</div><div class="label">卵泡期平均</div></div>
+                        </div>`;
+                        
+                        if (impact.comparison) {
+                            html += `<div style="margin-top:12px;padding:12px;background:#fef3c7;border-radius:8px">
+                                ${impact.comparison.note}
+                            </div>`;
+                        }
+                    } else {
+                        html += '<p>数据不足，无法分析</p>';
+                    }
+                }
+                
+                html += '</div>';
+                document.getElementById('menstrualResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('menstrualResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+
         // 生成报告
         async function generateReport() {
             const reportType = document.getElementById('reportType').value;
@@ -1640,6 +1727,38 @@ HTML_HOME = """
                 document.getElementById('reportResult').innerHTML = html;
             } catch (e) {
                 document.getElementById('reportResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+        
+        // 下载 PDF
+        async function downloadPDF() {
+            const reportType = document.getElementById('reportType').value;
+            const text = document.getElementById('reportCgmText').value;
+            if (!text.trim()) { alert('请先输入CGM数据'); return; }
+            
+            try {
+                const res = await fetch('/api/report/' + reportType + '/pdf', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.error || '生成失败');
+                    return;
+                }
+                
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `glyconutri_${reportType}_report.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('下载失败: ' + e.message);
             }
         }
         
@@ -3200,5 +3319,115 @@ async def api_analysis_goals(request: Request):
             "mean_goal": mean_goal,
             "gv_goal": gv_goal
         }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/analysis/menstrual")
+async def api_analysis_menstrual(request: Request):
+    """生理期分析"""
+    from glyconutri.circadian import BiomarkerAnalysis
+    
+    body = await request.json()
+    text = body.get('data', '')
+    periods = body.get('periods', [])
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        # 创建分析器
+        from datetime import datetime
+        period_objects = []
+        for p in periods:
+            start = datetime.fromisoformat(p['start'].replace('Z', '+00:00'))
+            period_objects.append({'start': start, 'end': start})
+        
+        analysis = BiomarkerAnalysis(df)
+        
+        # 使用简化的相位分析
+        df['hour'] = df['timestamp'].dt.hour
+        
+        # 比较经期和非经期
+        df['is_period'] = False
+        for p in period_objects:
+            mask = (df['timestamp'] >= p['start']) & (df['timestamp'] <= p['end'])
+            df.loc[mask, 'is_period'] = True
+        
+        period_mean = df[df['is_period']]['glucose'].mean() if df['is_period'].any() else None
+        non_period_mean = df[~df['is_period']]['glucose'].mean() if (~df['is_period']).any() else None
+        
+        return {
+            "menstrual_impact": {
+                "经期 (Day 1-5)": {"mean": round(period_mean, 1)} if period_mean else {},
+                "卵泡期 (Day 6-14)": {"mean": round(non_period_mean, 1)} if non_period_mean else {},
+                "comparison": {
+                    "note": f"经期血糖{'升高' if period_mean and non_period_mean and period_mean > non_period_mean + 5 else '下降' if period_mean and non_period_mean and period_mean < non_period_mean - 5 else '无明显差异'}"
+                } if period_mean and non_period_mean else {}
+            }
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/report/{report_type}/pdf")
+async def api_report_pdf(report_type: str, request: Request):
+    """生成 PDF 报告"""
+    from glyconutri.analysis_enhanced import generate_weekly_report, generate_monthly_report
+    from glyconutri.pdf_export import generate_pdf
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        # 生成报告数据
+        if report_type == 'weekly':
+            report_data = generate_weekly_report(df)
+        else:
+            report_data = generate_monthly_report(df)
+        
+        # 生成 PDF
+        pdf_bytes = generate_pdf(report_data, report_type)
+        
+        # 返回 PDF
+        from fastapi.responses import Response
+        return Response(
+            content=pdf_bytes,
+            media_type='application/pdf',
+            headers={'Content-Disposition': f'attachment; filename=glyconutri_{report_type}_report.pdf'}
+        )
     except Exception as e:
         return {"error": str(e)}
