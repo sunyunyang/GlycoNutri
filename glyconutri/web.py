@@ -333,6 +333,10 @@ HTML_HOME = """
                 <div class="tab" data-tab="illness">🤒 疾病分析</div>
                 <div class="tab" data-tab="goals">🎯 目标追踪</div>
                 <div class="tab" data-tab="menstrual">💊 生理期</div>
+                <div class="tab" data-tab="family">👨‍👩‍👧 家庭共享</div>
+                <div class="tab" data-tab="insurance">📋 保险导出</div>
+                <div class="tab" data-tab="backup">⬆️ 数据备份</div>
+                <div class="tab" data-tab="coach">🤖 AI教练</div>
                 <div class="tab" data-tab="settings">⚙️ 设置</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
@@ -767,6 +771,126 @@ HTML_HOME = """
                     <div id="menstrualResult"></div>
                 </div>
                 
+                <!-- 家庭共享 -->
+                <div class="tab-content" id="family">
+                    <div class="form-group">
+                        <label>👨‍👩‍👧 家庭成员管理</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">添加家庭成员，共享血糖数据</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>成员名称</label>
+                        <input type="text" id="familyMemberName" placeholder="例如: 妈妈">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>关系</label>
+                        <select id="familyMemberRelation">
+                            <option value="parent">父母</option>
+                            <option value="spouse">配偶</option>
+                            <option value="child">子女</option>
+                            <option value="other">其他</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn" onclick="addFamilyMember()" style="width:100%">
+                        添加成员
+                    </button>
+                    
+                    <div id="familyList" style="margin-top:16px"></div>
+                    
+                    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb">
+                        <label>📤 分享我的数据</label>
+                        <p style="color:#6b7280;font-size:14px;margin:8px 0">生成邀请链接</p>
+                        <button class="btn btn-secondary" onclick="generateShareLink()" style="width:100%">
+                            生成链接
+                        </button>
+                        <div id="shareLinkResult" style="margin-top:8px;word-break:break-all;font-size:12px"></div>
+                    </div>
+                </div>
+                
+                <!-- 保险导出 -->
+                <div class="tab-content" id="insurance">
+                    <div class="form-group">
+                        <label>📋 保险数据导出</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">生成符合保险要求的血糖报告</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>报告类型</label>
+                        <select id="insuranceReportType">
+                            <option value="basic">基础报告</option>
+                            <option value="detailed">详细报告 (含图表)</option>
+                            <option value="full">完整报告</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据</label>
+                        <textarea id="insuranceCgmText" rows="6" placeholder="上传 CGM 数据"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="exportInsuranceReport()" style="width:100%">
+                        导出保险报告
+                    </button>
+                    
+                    <div id="insuranceResult"></div>
+                </div>
+                
+                <!-- 数据备份 -->
+                <div class="tab-content" id="backup">
+                    <div class="form-group">
+                        <label>⬆️ 数据备份</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">导出所有数据或恢复备份</p>
+                    </div>
+                    
+                    <div style="display:flex;gap:8px">
+                        <button class="btn" onclick="exportAllData()" style="flex:1">
+                            📤 导出数据
+                        </button>
+                        <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()" style="flex:1">
+                            📥 导入数据
+                        </button>
+                        <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData()">
+                    </div>
+                    
+                    <div id="backupResult" style="margin-top:16px"></div>
+                    
+                    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb">
+                        <label>📊 CGM 数据 (用于备份)</label>
+                        <textarea id="backupCgmText" rows="6" placeholder="上传当前CGM数据"></textarea>
+                    </div>
+                </div>
+                
+                <!-- AI教练 -->
+                <div class="tab-content" id="coach">
+                    <div class="form-group">
+                        <label>🤖 AI 血糖教练</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">问我任何关于血糖管理的问题</p>
+                    </div>
+                    
+                    <div id="coachMessages" style="height:300px;overflow-y:auto;background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:12px">
+                        <div style="margin-bottom:8px">
+                            <span style="background:#3b82f6;color:white;padding:8px 12px;border-radius:12px 12px 12px 0">你好！我是你的血糖管理教练，有什么可以帮你的？</span>
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex;gap:8px">
+                        <input type="text" id="coachInput" placeholder="输入问题..." style="flex:1;padding:12px;border:1px solid #e5e7eb;border-radius:8px">
+                        <button class="btn" onclick="sendToCoach()" style="width:auto;padding:12px 24px">发送</button>
+                    </div>
+                    
+                    <div style="margin-top:16px">
+                        <label style="font-size:12px;color:#6b7280">快速建议:</label>
+                        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+                            <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" onclick="quickAsk('血糖高怎么办')">血糖高</button>
+                            <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" onclick="quickAsk('血糖低怎么办')">血糖低</button>
+                            <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" onclick="quickAsk('运动建议')">运动建议</button>
+                            <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" onclick="quickAsk('饮食建议')">饮食建议</button>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- 设置 -->
                 <div class="tab-content" id="settings">
                     <div class="form-group">
@@ -863,7 +987,7 @@ HTML_HOME = """
         </div>
         
         <div class="footer">
-            GlycoNutri v2.3 | 血糖营养计算工具
+            GlycoNutri v2.4 | 血糖营养计算工具
         </div>
     </div>
     
@@ -1675,6 +1799,186 @@ HTML_HOME = """
             } catch (e) {
                 document.getElementById('menstrualResult').innerHTML = `错误: ${e.message}`;
             }
+        }
+
+        // 家庭共享
+        let familyMembers = [];
+        
+        function addFamilyMember() {
+            const name = document.getElementById('familyMemberName').value;
+            const relation = document.getElementById('familyMemberRelation').value;
+            
+            if (!name) { alert('请输入成员名称'); return; }
+            
+            familyMembers.push({name, relation, id: Date.now()});
+            
+            renderFamilyList();
+        }
+        
+        function renderFamilyList() {
+            const list = document.getElementById('familyList');
+            
+            if (familyMembers.length === 0) {
+                list.innerHTML = '<p style="color:#6b7280">暂无家庭成员</p>';
+                return;
+            }
+            
+            let html = '<div style="display:flex;flex-direction:column;gap:8px">';
+            familyMembers.forEach(m => {
+                html += `<div style="padding:12px;background:#f3f4f6;border-radius:8px;display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <strong>${m.name}</strong>
+                        <span style="color:#6b7280;font-size:12px"> - ${m.relation}</span>
+                    </div>
+                    <button onclick="removeFamilyMember(${m.id})" style="background:none;border:none;color:red;cursor:pointer">✕</button>
+                </div>`;
+            });
+            html += '</div>';
+            list.innerHTML = html;
+        }
+        
+        function removeFamilyMember(id) {
+            familyMembers = familyMembers.filter(m => m.id !== id);
+            renderFamilyList();
+        }
+        
+        function generateShareLink() {
+            // 生成模拟分享链接
+            const token = btoa(Date.now() + '-' + Math.random().toString(36).substr(2));
+            const link = `${window.location.origin}/share/${token}`;
+            
+            document.getElementById('shareLinkResult').innerHTML = `
+                <div style="padding:12px;background:#d1fae5;border-radius:8px">
+                    分享链接 (有效期24小时):<br>
+                    <a href="${link}" target="_blank">${link}</a>
+                </div>
+            `;
+        }
+
+        // 保险导出
+        async function exportInsuranceReport() {
+            const reportType = document.getElementById('insuranceReportType').value;
+            const text = document.getElementById('insuranceCgmText').value;
+            
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            document.getElementById('insuranceResult').innerHTML = '<div class="loading">生成中...</div>';
+            
+            try {
+                const res = await fetch('/api/insurance/export', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text, report_type: reportType})
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('insuranceResult').innerHTML = `<p style="color:red">${data.error}</p>`;
+                    return;
+                }
+                
+                // 下载
+                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `insurance_report_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                
+                document.getElementById('insuranceResult').innerHTML = '<p style="color:green">✓ 报告已导出</p>';
+            } catch (e) {
+                document.getElementById('insuranceResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+
+        // 数据备份
+        function exportAllData() {
+            const text = document.getElementById('backupCgmText').value;
+            
+            if (!text.trim()) { alert('请先输入CGM数据'); return; }
+            
+            const data = {
+                export_date: new Date().toISOString(),
+                version: '2.4',
+                cgm_data: text,
+                family_members: familyMembers,
+                settings: localStorage.getItem('glyconutri_settings') || {}
+            };
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `glyconutri_backup_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            
+            document.getElementById('backupResult').innerHTML = '<p style="color:green">✓ 数据已导出</p>';
+        }
+        
+        function importData() {
+            const input = document.getElementById('importFile');
+            const file = input.files[0];
+            
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (data.cgm_data) {
+                        document.getElementById('backupCgmText').value = data.cgm_data;
+                    }
+                    if (data.family_members) {
+                        familyMembers = data.family_members;
+                        renderFamilyList();
+                    }
+                    
+                    document.getElementById('backupResult').innerHTML = '<p style="color:green">✓ 数据已导入</p>';
+                } catch (err) {
+                    alert('导入失败: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // AI教练
+        async function sendToCoach() {
+            const input = document.getElementById('coachInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // 添加用户消息
+            const messagesDiv = document.getElementById('coachMessages');
+            messagesDiv.innerHTML += `<div style="margin-bottom:8px;text-align:right">
+                <span style="background:#10b981;color:white;padding:8px 12px;border-radius:12px 12px 0 12px">${message}</span>
+            </div>`;
+            
+            input.value = '';
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // 发送请求
+            try {
+                const res = await fetch('/api/coach/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message})
+                });
+                const data = await res.json();
+                
+                messagesDiv.innerHTML += `<div style="margin-bottom:8px">
+                    <span style="background:#3b82f6;color:white;padding:8px 12px;border-radius:12px 12px 12px 0">${data.reply}</span>
+                </div>`;
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            } catch (e) {
+                messagesDiv.innerHTML += `<div style="margin-bottom:8px;color:red">错误: ${e.message}</div>`;
+            }
+        }
+        
+        function quickAsk(question) {
+            document.getElementById('coachInput').value = question;
+            sendToCoach();
         }
 
         // 生成报告
@@ -3431,3 +3735,82 @@ async def api_report_pdf(report_type: str, request: Request):
         )
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.post("/api/insurance/export")
+async def api_insurance_export(request: Request):
+    """保险数据导出"""
+    from glyconutri.analysis_enhanced import generate_weekly_report
+    
+    body = await request.json()
+    text = body.get('data', '')
+    report_type = body.get('report_type', 'basic')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        # 生成报告
+        report = generate_weekly_report(df)
+        
+        # 添加保险特定字段
+        result = {
+            "report_type": "insurance",
+            "insurance_type": report_type,
+            "generated_at": datetime.now().isoformat(),
+            "patient_info": {
+                "name": "Patient",
+                "id": "ANONYMOUS"
+            },
+            "summary": report.get('overview', {}),
+            "data_points": len(df),
+            "date_range": {
+                "start": df['timestamp'].min().isoformat(),
+                "end": df['timestamp'].max().isoformat()
+            },
+            "metrics": {
+                "tir": report.get('overview', {}).get('tir', 0),
+                "mean_glucose": report.get('overview', {}).get('mean_glucose', 0),
+                "gv": report.get('overview', {}).get('gv', 0)
+            },
+            "daily_data": report.get('daily_summary', [])
+        }
+        
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/coach/chat")
+async def api_coach_chat(request: Request):
+    """AI教练对话"""
+    from glyconutri.coach import chat
+    
+    body = await request.json()
+    message = body.get('message', '')
+    
+    if not message:
+        return {"reply": "请输入问题"}
+    
+    reply = chat(message)
+    return {"reply": reply}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
