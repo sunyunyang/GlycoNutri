@@ -331,6 +331,8 @@ HTML_HOME = """
                 <div class="tab" data-tab="settings">⚙️ 设置</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
+                <div class="tab" data-tab="voice">🎤 语音输入</div>
+                <div class="tab" data-tab="image">📷 食物识别</div>
             </div>
             
             <div class="content">
@@ -699,6 +701,52 @@ HTML_HOME = """
                     </div>
                 </div>
                 
+                <!-- 语音输入 -->
+                <div class="tab-content" id="voice">
+                    <div class="form-group">
+                        <label>🎤 语音记录餐食/运动</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">点击麦克风说话，自动识别食物</p>
+                    </div>
+                    
+                    <div style="text-align:center;margin:24px 0">
+                        <button id="recordBtn" class="btn" style="border-radius:50%;width:80px;height:80px;font-size:32px" onclick="toggleRecording()">
+                            🎤
+                        </button>
+                        <p id="recordStatus" style="margin-top:8px;color:#6b7280">点击开始录音</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>或直接输入文字</label>
+                        <textarea id="voiceText" rows="3" placeholder="例如: 吃了1碗米饭和鸡蛋"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeVoiceText()" style="width:100%">
+                        解析餐食
+                    </button>
+                    
+                    <div id="voiceResult"></div>
+                </div>
+                
+                <!-- 图片识别 -->
+                <div class="tab-content" id="image">
+                    <div class="form-group">
+                        <label>📷 拍照识别食物</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">上传食物图片，自动识别并估算营养</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <input type="file" id="foodImage" accept="image/*" onchange="previewFoodImage()">
+                    </div>
+                    
+                    <div id="imagePreview" style="text-align:center;margin:16px 0"></div>
+                    
+                    <button class="btn" onclick="recognizeFoodImage()" style="width:100%">
+                        识别食物
+                    </button>
+                    
+                    <div id="imageResult"></div>
+                </div>
+                
                 <!-- 历史记录 -->
                 <div class="tab-content" id="history">
                     <div id="historyList">
@@ -709,7 +757,7 @@ HTML_HOME = """
         </div>
         
         <div class="footer">
-            GlycoNutri v1.2 | 血糖营养计算工具
+            GlycoNutri v2.1 | 血糖营养计算工具
         </div>
     </div>
     
@@ -1537,6 +1585,168 @@ HTML_HOME = """
             });
             html += '</div>';
             document.getElementById('foodResult').innerHTML = html;
+        }
+        
+        // 语音录制
+        let mediaRecorder = null;
+        let audioChunks = [];
+        
+        async function toggleRecording() {
+            const btn = document.getElementById('recordBtn');
+            const status = document.getElementById('recordStatus');
+            
+            if (!mediaRecorder) {
+                // 开始录音
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    
+                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const formData = new FormData();
+                        formData.append('audio', audioBlob, 'recording.webm');
+                        
+                        status.innerText = '识别中...';
+                        
+                        try {
+                            const res = await fetch('/api/voice/transcribe', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const data = await res.json();
+                            
+                            if (data.text) {
+                                document.getElementById('voiceText').value = data.text;
+                                analyzeVoiceText();
+                            } else {
+                                status.innerText = data.error || '识别失败';
+                            }
+                        } catch (e) {
+                            status.innerText = '识别错误: ' + e.message;
+                        }
+                    };
+                    
+                    mediaRecorder.start();
+                    btn.innerHTML = '⏹️';
+                    status.innerText = '录音中... 点击停止';
+                    
+                } catch (e) {
+                    alert('无法访问麦克风: ' + e.message);
+                }
+            } else {
+                // 停止录音
+                mediaRecorder.stop();
+                mediaRecorder = null;
+                btn.innerHTML = '🎤';
+            }
+        }
+        
+        // 解析语音文本
+        async function analyzeVoiceText() {
+            const text = document.getElementById('voiceText').value;
+            if (!text.trim()) { alert('请说话或输入文字'); return; }
+            
+            document.getElementById('voiceResult').innerHTML = '<div class="loading">解析中...</div>';
+            
+            try {
+                const res = await fetch('/api/voice/parse', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text})
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>🍽️ 识别结果</h3>';
+                
+                if (data.foods && data.foods.length > 0) {
+                    html += '<div class="result-grid">';
+                    data.foods.forEach(f => {
+                        html += `<div class="result-item">
+                            <div class="value">${f.name}</div>
+                            <div class="label">${f.quantity}份 | ${f.carbs}g碳水</div>
+                        </div>`;
+                    });
+                    html += '</div>';
+                    
+                    html += `<div style="margin-top:16px;padding:12px;background:#f3f4f6;border-radius:8px">
+                        <div><strong>总计:</strong> ${data.total_carbs}g 碳水</div>
+                        <div><strong>估算GL:</strong> ${data.estimated_gl}</div>
+                    </div>`;
+                } else {
+                    html += '<p>未识别到食物</p>';
+                }
+                
+                html += '</div>';
+                document.getElementById('voiceResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('voiceResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+        
+        // 图片预览
+        function previewFoodImage() {
+            const input = document.getElementById('foodImage');
+            const preview = document.getElementById('imagePreview');
+            
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    preview.innerHTML = `<img src="${e.target.result}" style="max-width:200px;border-radius:8px">`;
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+        
+        // 识别图片
+        async function recognizeFoodImage() {
+            const input = document.getElementById('foodImage');
+            if (!input.files || !input.files[0]) {
+                alert('请选择图片');
+                return;
+            }
+            
+            document.getElementById('imageResult').innerHTML = '<div class="loading">识别中...</div>';
+            
+            const formData = new FormData();
+            formData.append('image', input.files[0]);
+            
+            try {
+                const res = await fetch('/api/food/recognize', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>📷 识别结果</h3>';
+                
+                if (data.foods && data.foods.length > 0) {
+                    html += '<div class="result-grid">';
+                    data.foods.forEach(f => {
+                        html += `<div class="result-item">
+                            <div class="value">${f.name}</div>
+                            <div class="label">置信度: ${Math.round(f.confidence * 100)}%</div>
+                        </div>`;
+                    });
+                    html += '</div>';
+                    
+                    if (data.nutrition) {
+                        html += `<div style="margin-top:16px;padding:12px;background:#f3f4f6;border-radius:8px">
+                            <div><strong>估算营养:</strong></div>
+                            <div>碳水: ${data.nutrition.carbs}g | 蛋白质: ${data.nutrition.protein}g | 脂肪: ${data.nutrition.fat}g</div>
+                            <div>热量: ${data.nutrition.calories} kcal</div>
+                        </div>`;
+                    }
+                } else {
+                    html += '<p>' + (data.error || '未识别到食物') + '</p>';
+                }
+                
+                html += '</div>';
+                document.getElementById('imageResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('imageResult').innerHTML = `错误: ${e.message}`;
+            }
         }
         
         // 设置相关
@@ -2497,6 +2707,72 @@ async def api_report_monthly(request: Request):
         return generate_monthly_report(df)
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.post("/api/voice/transcribe")
+async def api_voice_transcribe(request: Request):
+    """语音转录"""
+    from glyconutri.voice import get_voice_input
+    
+    try:
+        form = await request.form()
+        audio_file = form.get('audio')
+        
+        if not audio_file:
+            return {"error": "没有音频文件", "text": ""}
+        
+        # 读取音频数据
+        audio_bytes = await audio_file.read()
+        
+        # 转录
+        voice = get_voice_input()
+        result = voice.transcribe_bytes(audio_bytes, language="zh")
+        
+        return result
+    except Exception as e:
+        return {"error": str(e), "text": ""}
+
+
+@app.post("/api/voice/parse")
+async def api_voice_parse(request: Request):
+    """解析语音文本"""
+    from glyconutri.voice import parse_meal_from_speech
+    
+    try:
+        body = await request.json()
+        text = body.get('text', '')
+        
+        if not text:
+            return {"error": "没有文本", "foods": []}
+        
+        result = parse_meal_from_speech(text)
+        return result
+    except Exception as e:
+        return {"error": str(e), "foods": []}
+
+
+@app.post("/api/food/recognize")
+async def api_food_recognize(request: Request):
+    """识别食物图片"""
+    from glyconutri.food_image import get_food_recognizer
+    
+    try:
+        form = await request.form()
+        image_file = form.get('image')
+        
+        if not image_file:
+            return {"error": "没有图片文件", "foods": []}
+        
+        # 读取图片数据
+        image_bytes = await image_file.read()
+        
+        # 识别
+        recognizer = get_food_recognizer()
+        result = recognizer.recognize_from_bytes(image_bytes)
+        
+        return result
+    except Exception as e:
+        return {"error": str(e), "foods": []}
 
 
 if __name__ == "__main__":
