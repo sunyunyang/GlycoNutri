@@ -34,7 +34,7 @@ HTML_HOME = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GlycoNutri - 血糖营养工具</title>
+    <title>GlycoNutri - 临床研究工具</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -313,7 +313,7 @@ HTML_HOME = """
     <div class="container">
         <div class="header">
             <h1>🩸 GlycoNutri</h1>
-            <p>血糖营养计算工具 for 医生 & 患者</p>
+            <p>血糖营养计算工具 for 医生 & 护士</p>
         </div>
         
         <div class="main-card">
@@ -331,12 +331,10 @@ HTML_HOME = """
                 <div class="tab" data-tab="alcohol">🍺 饮酒分析</div>
                 <div class="tab" data-tab="stress">😰 压力分析</div>
                 <div class="tab" data-tab="illness">🤒 疾病分析</div>
-                <div class="tab" data-tab="goals">🎯 目标追踪</div>
-                <div class="tab" data-tab="menstrual">💊 生理期</div>
-                <div class="tab" data-tab="family">👨‍👩‍👧 家庭共享</div>
-                <div class="tab" data-tab="insurance">📋 保险导出</div>
-                <div class="tab" data-tab="backup">⬆️ 数据备份</div>
-                <div class="tab" data-tab="coach">🤖 AI教练</div>
+                <div class="tab" data-tab="patients">👥 患者管理</div>
+                <div class="tab" data-tab="comparison">📊 患者对比</div>
+                <div class="tab" data-tab="research">🔬 研究工具</div>
+                <div class="tab" data-tab="lab">🧪 实验室数据</div>
                 <div class="tab" data-tab="settings">⚙️ 设置</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
@@ -721,57 +719,7 @@ HTML_HOME = """
                     <div id="illnessResult"></div>
                 </div>
                 
-                <!-- 目标追踪 -->
-                <div class="tab-content" id="goals">
-                    <div class="form-group">
-                        <label>🎯 设置您的目标</label>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>TIR 目标 (%)</label>
-                        <input type="number" id="goalTir" value="70" min="0" max="100">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>平均血糖目标 (mg/dL)</label>
-                        <input type="number" id="goalMean" value="140" min="70" max="200">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>血糖波动目标 (GV %)</label>
-                        <input type="number" id="goalGv" value="20" min="5" max="50">
-                    </div>
-                    
-                    <button class="btn" onclick="checkGoals()" style="width:100%">
-                        检查目标达成
-                    </button>
-                    
-                    <div id="goalsResult"></div>
-                </div>
                 
-                <!-- 生理期分析 -->
-                <div class="tab-content" id="menstrual">
-                    <div class="form-group">
-                        <label>💊 生理期开始日期</label>
-                        <input type="date" id="menstrualStart">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>📊 CGM 数据 (多日)</label>
-                        <textarea id="menstrualCgmText" rows="6" placeholder="上传多日CGM数据"></textarea>
-                    </div>
-                    
-                    <button class="btn" onclick="addMenstrualPeriod()" style="width:48%;margin-right:2%">
-                        添加记录
-                    </button>
-                    <button class="btn" onclick="analyzeMenstrual()" style="width:48%">
-                        分析影响
-                    </button>
-                    
-                    <div id="menstrualResult"></div>
-                </div>
-                
-                <!-- 家庭共享 -->
                 <div class="tab-content" id="family">
                     <div class="form-group">
                         <label>👨‍👩‍👧 家庭成员管理</label>
@@ -809,35 +757,7 @@ HTML_HOME = """
                     </div>
                 </div>
                 
-                <!-- 保险导出 -->
-                <div class="tab-content" id="insurance">
-                    <div class="form-group">
-                        <label>📋 保险数据导出</label>
-                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">生成符合保险要求的血糖报告</p>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>报告类型</label>
-                        <select id="insuranceReportType">
-                            <option value="basic">基础报告</option>
-                            <option value="detailed">详细报告 (含图表)</option>
-                            <option value="full">完整报告</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>📊 CGM 数据</label>
-                        <textarea id="insuranceCgmText" rows="6" placeholder="上传 CGM 数据"></textarea>
-                    </div>
-                    
-                    <button class="btn" onclick="exportInsuranceReport()" style="width:100%">
-                        导出保险报告
-                    </button>
-                    
-                    <div id="insuranceResult"></div>
-                </div>
                 
-                <!-- 数据备份 -->
                 <div class="tab-content" id="backup">
                     <div class="form-group">
                         <label>⬆️ 数据备份</label>
@@ -862,23 +782,161 @@ HTML_HOME = """
                     </div>
                 </div>
                 
-                <!-- AI教练 -->
-                <div class="tab-content" id="coach">
+                <!-- 患者管理 -->
+                <div class="tab-content" id="patients">
                     <div class="form-group">
-                        <label>🤖 AI 血糖教练</label>
-                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">问我任何关于血糖管理的问题</p>
+                        <label>👥 患者管理</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">管理患者列表和数据</p>
                     </div>
                     
-                    <div id="coachMessages" style="height:300px;overflow-y:auto;background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:12px">
-                        <div style="margin-bottom:8px">
-                            <span style="background:#3b82f6;color:white;padding:8px 12px;border-radius:12px 12px 12px 0">你好！我是你的血糖管理教练，有什么可以帮你的？</span>
-                        </div>
+                    <div class="form-group">
+                        <label>患者ID/姓名</label>
+                        <input type="text" id="patientId" placeholder="例如: P001">
                     </div>
                     
-                    <div style="display:flex;gap:8px">
-                        <input type="text" id="coachInput" placeholder="输入问题..." style="flex:1;padding:12px;border:1px solid #e5e7eb;border-radius:8px">
-                        <button class="btn" onclick="sendToCoach()" style="width:auto;padding:12px 24px">发送</button>
+                    <div class="form-group">
+                        <label>患者姓名</label>
+                        <input type="text" id="patientName" placeholder="例如: 张三">
                     </div>
+                    
+                    <div class="form-group">
+                        <label>年龄</label>
+                        <input type="number" id="patientAge" placeholder="例如: 45">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>性别</label>
+                        <select id="patientGender">
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>糖尿病类型</label>
+                        <select id="patientType">
+                            <option value="1型">1型糖尿病</option>
+                            <option value="2型">2型糖尿病</option>
+                            <option value="妊娠">妊娠糖尿病</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn" onclick="addPatient()" style="width:100%">
+                        添加患者
+                    </button>
+                    
+                    <div id="patientList" style="margin-top:16px"></div>
+                </div>
+                
+                <!-- 患者对比 -->
+                <div class="tab-content" id="comparison">
+                    <div class="form-group">
+                        <label>📊 选择患者进行对比</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">选择2-3位患者对比血糖数据</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>患者A</label>
+                        <select id="comparePatientA"><option value="">-- 选择患者 --</option></select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>患者B</label>
+                        <select id="comparePatientB"><option value="">-- 选择患者 --</option></select>
+                    </div>
+                    
+                    <button class="btn" onclick="comparePatients()" style="width:100%">
+                        对比分析
+                    </button>
+                    
+                    <div id="comparisonResult"></div>
+                </div>
+                
+                <!-- 研究工具 -->
+                <div class="tab-content" id="research">
+                    <div class="form-group">
+                        <label>🔬 研究工具</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">临床研究数据分析</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>分析类型</label>
+                        <select id="researchType">
+                            <option value="abtest">AB测试 / 药物效果对比</option>
+                            <option value="correlation">相关性分析</option>
+                            <option value="survival">生存分析</option>
+                            <option value="regression">回归分析</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>组A数据</label>
+                        <textarea id="groupAData" rows="4" placeholder="粘贴组A的CGM数据"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>组B数据</label>
+                        <textarea id="groupBData" rows="4" placeholder="粘贴组B的CGM数据"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="runResearchAnalysis()" style="width:100%">
+                        执行分析
+                    </button>
+                    
+                    <div id="researchResult"></div>
+                </div>
+                
+                <!-- 实验室数据 -->
+                <div class="tab-content" id="lab">
+                    <div class="form-group">
+                        <label>🧪 实验室数据</label>
+                        <p style="color:#6b7280;font-size:14px;margin-bottom:16px">整合实验室检查结果</p>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>HbA1c (%)</label>
+                        <input type="number" id="labHbA1c" step="0.1" placeholder="例如: 7.5">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>空腹血糖 (mg/dL)</label>
+                        <input type="number" id="labFastingGlucose" placeholder="例如: 120">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>餐后2h血糖 (mg/dL)</label>
+                        <input type="number" id="lab2hPP" placeholder="例如: 180">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>总胆固醇 (mg/dL)</label>
+                        <input type="number" id="labCholesterol" placeholder="例如: 200">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>甘油三酯 (mg/dL)</label>
+                        <input type="number" id="labTriglycerides" placeholder="例如: 150">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>LDL (mg/dL)</label>
+                        <input type="number" id="labLDL" placeholder="例如: 100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>HDL (mg/dL)</label>
+                        <input type="number" id="labHDL" placeholder="例如: 50">
+                    </div>
+                    
+                    <button class="btn" onclick="saveLabData()" style="width:100%">
+                        保存实验室数据
+                    </button>
+                    
+                    <div id="labResult"></div>
+                </div>
+                
+                <!-- 设置 -->
                     
                     <div style="margin-top:16px">
                         <label style="font-size:12px;color:#6b7280">快速建议:</label>
@@ -987,13 +1045,144 @@ HTML_HOME = """
         </div>
         
         <div class="footer">
-            GlycoNutri v2.4 | 血糖营养计算工具
+            GlycoNutri v3.0 | 临床研究工具
         </div>
     </div>
     
     <script>
         // 全局变量
         let cgmData = null;
+        let patients = [];
+        
+        // 患者管理
+        function addPatient() {
+            const id = document.getElementById('patientId').value;
+            const name = document.getElementById('patientName').value;
+            const age = document.getElementById('patientAge').value;
+            const gender = document.getElementById('patientGender').value;
+            const type = document.getElementById('patientType').value;
+            
+            if (!id || !name) { alert('请输入患者ID和姓名'); return; }
+            
+            patients.push({id, name, age, gender, type, data: ''});
+            renderPatientList();
+            
+            // 清空表单
+            document.getElementById('patientId').value = '';
+            document.getElementById('patientName').value = '';
+        }
+        
+        function renderPatientList() {
+            const list = document.getElementById('patientList');
+            
+            if (patients.length === 0) {
+                list.innerHTML = '<p style="color:#6b7280">暂无患者</p>';
+                return;
+            }
+            
+            let html = '<div style="display:flex;flex-direction:column;gap:8px">';
+            patients.forEach(p => {
+                html += `<div style="padding:12px;background:#f3f4f6;border-radius:8px;display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <strong>${p.name}</strong> (${p.id})<br>
+                        <span style="color:#6b7280;font-size:12px">${p.type} | ${p.gender} | ${p.age}岁</span>
+                    </div>
+                    <button onclick="removePatient('${p.id}')" style="background:none;border:none;color:red;cursor:pointer">✕</button>
+                </div>`;
+            });
+            html += '</div>';
+            list.innerHTML = html;
+            
+            // 更新对比下拉框
+            updateCompareSelects();
+        }
+        
+        function removePatient(id) {
+            patients = patients.filter(p => p.id !== id);
+            renderPatientList();
+        }
+        
+        function updateCompareSelects() {
+            const selects = ['comparePatientA', 'comparePatientB'];
+            selects.forEach(sid => {
+                const sel = document.getElementById(sid);
+                sel.innerHTML = '<option value="">-- 选择患者 --</option>';
+                patients.forEach(p => {
+                    sel.innerHTML += `<option value="${p.id}">${p.name} (${p.id})</option>`;
+                });
+            });
+        }
+        
+        // 患者对比
+        async function comparePatients() {
+            const idA = document.getElementById('comparePatientA').value;
+            const idB = document.getElementById('comparePatientB').value;
+            
+            if (!idA || !idB) { alert('请选择两位患者'); return; }
+            
+            // 简化版：返回提示，需要患者数据
+            document.getElementById('comparisonResult').innerHTML = '<div class="loading">对比分析需要完整的CGM数据...</div>';
+            
+            // TODO: 实现真正的患者数据对比
+            document.getElementById('comparisonResult').innerHTML = '<div class="result-card"><h3>患者对比</h3><p>选择患者后可进行TIR、GV等指标对比</p></div>';
+        }
+        
+        // 研究分析
+        async function runResearchAnalysis() {
+            const type = document.getElementById('researchType').value;
+            const dataA = document.getElementById('groupAData').value;
+            const dataB = document.getElementById('groupBData').value;
+            
+            if (!dataA.trim() || !dataB.trim()) { alert('请输入两组数据'); return; }
+            
+            document.getElementById('researchResult').innerHTML = '<div class="loading">分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/research/' + type, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({group_a: dataA, group_b: dataB})
+                });
+                const data = await res.json();
+                
+                let html = '<div class="result-card"><h3>🔬 ' + 
+                    (type === 'abtest' ? 'AB测试结果' : 
+                     type === 'correlation' ? '相关性分析' : 
+                     type === 'survival' ? '生存分析' : '回归分析') + '</h3>';
+                
+                if (data.error) {
+                    html += `<p>${data.error}</p>`;
+                } else {
+                    // 显示结果
+                    html += '<pre style="background:#f3f4f6;padding:12px;border-radius:8px;overflow-x:auto">' + 
+                        JSON.stringify(data, null, 2) + '</pre>';
+                }
+                
+                html += '</div>';
+                document.getElementById('researchResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('researchResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+        
+        // 实验室数据
+        function saveLabData() {
+            const labData = {
+                hba1c: document.getElementById('labHbA1c').value,
+                fasting_glucose: document.getElementById('labFastingGlucose').value,
+               pp_2h: document.getElementById('lab2hPP').value,
+                cholesterol: document.getElementById('labCholesterol').value,
+                triglycerides: document.getElementById('labTriglycerides').value,
+                ldl: document.getElementById('labLDL').value,
+                hdl: document.getElementById('labHDL').value,
+                date: new Date().toISOString()
+            };
+            
+            // 保存到本地
+            localStorage.setItem('glyconutri_lab_data', JSON.stringify(labData));
+            
+            document.getElementById('labResult').innerHTML = '<p style="color:green">✓ 实验室数据已保存</p>';
+        }
         
         // Tab 切换
         document.querySelectorAll('.tab').forEach(tab => {
@@ -1546,442 +1735,6 @@ HTML_HOME = """
         }
 
         // 饮酒分析
-        async function analyzeAlcohol() {
-            const timeStr = document.getElementById('alcoholTime').value;
-            const text = document.getElementById('alcoholCgmText').value;
-            if (!text.trim()) { alert('请输入CGM数据'); return; }
-            
-            const alcoholTime = timeStr ? new Date(timeStr).toISOString() : new Date().toISOString();
-            
-            document.getElementById('alcoholResult').innerHTML = '<div class="loading">分析中...</div>';
-            
-            try {
-                const res = await fetch('/api/analysis/alcohol', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: text, alcohol_time: alcoholTime})
-                });
-                const data = await res.json();
-                
-                let html = '<div class="result-card"><h3>🍺 饮酒影响分析</h3>';
-                
-                if (data.error) {
-                    html += `<p>${data.error}</p>`;
-                } else {
-                    if (data.baseline) {
-                        html += `<div class="result-grid">
-                            <div class="result-item"><div class="value">${data.baseline}</div><div class="label">饮酒前血糖</div></div>
-                        </div>`;
-                    }
-                    if (data.after) {
-                        html += `<div class="result-grid">
-                            <div class="result-item"><div class="value">${data.after.mean}</div><div class="label">饮酒后平均</div></div>
-                            <div class="result-item"><div class="value">${data.after.min}</div><div class="label">最低血糖</div></div>
-                            <div class="result-item"><div class="value">${data.after.max}</div><div class="label">最高血糖</div></div>
-                        </div>`;
-                    }
-                    html += `<div style="margin-top:12px;padding:12px;background:${data.hypoglycemia_risk === '高' ? '#fee2e2' : '#d1fae5'};border-radius:8px">
-                        低血糖风险: <strong>${data.hypoglycemia_risk}</strong>
-                        ${data.warning ? '<br>' + data.warning : ''}
-                    </div>`;
-                }
-                
-                html += '</div>';
-                document.getElementById('alcoholResult').innerHTML = html;
-            } catch (e) {
-                document.getElementById('alcoholResult').innerHTML = `错误: ${e.message}`;
-            }
-        }
-
-        // 压力分析
-        async function analyzeStress() {
-            const text = document.getElementById('stressCgmText').value;
-            if (!text.trim()) { alert('请输入CGM数据'); return; }
-            
-            document.getElementById('stressResult').innerHTML = '<div class="loading">分析中...</div>';
-            
-            try {
-                const res = await fetch('/api/analysis/stress', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: text})
-                });
-                const data = await res.json();
-                
-                let html = '<div class="result-card"><h3>😰 压力影响分析</h3>';
-                
-                if (data.error) {
-                    html += `<p>${data.error}</p>`;
-                } else {
-                    html += `<div class="result-grid">
-                        <div class="result-item highlight">
-                            <div class="value">${data.total_periods}</div>
-                            <div class="label">压力期数量</div>
-                        </div>
-                    </div>`;
-                    
-                    if (data.stress_periods && data.stress_periods.length > 0) {
-                        html += '<div style="margin-top:12px"><strong>压力期:</strong></div><ul style="padding-left:20px;margin-top:8px">';
-                        data.stress_periods.slice(0, 5).forEach(p => {
-                            html += `<li>${p.start.slice(0, 16)} - ${p.duration_hours}h, 平均 ${p.avg_glucose}</li>`;
-                        });
-                        html += '</ul>';
-                    }
-                    
-                    html += `<div style="margin-top:12px;padding:12px;background:#fef3c7;border-radius:8px">${data.interpretation}</div>`;
-                }
-                
-                html += '</div>';
-                document.getElementById('stressResult').innerHTML = html;
-            } catch (e) {
-                document.getElementById('stressResult').innerHTML = `错误: ${e.message}`;
-            }
-        }
-
-        // 疾病分析
-        async function analyzeIllness() {
-            const text = document.getElementById('illnessCgmText').value;
-            if (!text.trim()) { alert('请输入CGM数据'); return; }
-            
-            document.getElementById('illnessResult').innerHTML = '<div class="loading">分析中...</div>';
-            
-            try {
-                const res = await fetch('/api/analysis/illness', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: text})
-                });
-                const data = await res.json();
-                
-                let html = '<div class="result-card"><h3>🤒 疾病影响分析</h3>';
-                
-                if (data.error) {
-                    html += `<p>${data.error}</p>`;
-                } else {
-                    if (data.unusual_volatility) {
-                        html += `<div style="margin:8px 0;padding:12px;background:#fee2e2;border-radius:8px">
-                            ⚠️ 检测到血糖异常波动<br>
-                            异常小时数: ${data.periods}<br>
-                            ${data.suggestion}
-                        </div>`;
-                    } else {
-                        html += `<div style="margin:8px 0;padding:12px;background:#d1fae5;border-radius:8px">
-                            ✓ 血糖波动正常，未检测到疾病影响
-                        </div>`;
-                    }
-                }
-                
-                html += '</div>';
-                document.getElementById('illnessResult').innerHTML = html;
-            } catch (e) {
-                document.getElementById('illnessResult').innerHTML = `错误: ${e.message}`;
-            }
-        }
-
-        // 目标追踪
-        async function checkGoals() {
-            const goalTir = parseFloat(document.getElementById('goalTir').value);
-            const goalMean = parseFloat(document.getElementById('goalMean').value);
-            const goalGv = parseFloat(document.getElementById('goalGv').value);
-            
-            const text = document.getElementById('cgmText')?.value;
-            
-            document.getElementById('goalsResult').innerHTML = '<div class="loading">检查中...</div>';
-            
-            try {
-                const res = await fetch('/api/analysis/goals', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        tir_goal: goalTir,
-                        mean_goal: goalMean,
-                        gv_goal: goalGv,
-                        data: text || ''
-                    })
-                });
-                const data = await res.json();
-                
-                let html = '<div class="result-card"><h3>🎯 目标达成情况</h3>';
-                
-                if (data.error) {
-                    html += `<p>${data.error}</p>`;
-                } else {
-                    html += '<div class="result-grid">';
-                    
-                    const tirStatus = data.actual_tir >= goalTir ? '✅' : '❌';
-                    html += `<div class="result-item ${data.actual_tir >= goalTir ? 'highlight' : ''}">
-                        <div class="value">${tirStatus} ${data.actual_tir}%</div>
-                        <div class="label">TIR (目标: ${goalTir}%)</div>
-                    </div>`;
-                    
-                    const meanStatus = data.actual_mean <= goalMean ? '✅' : '❌';
-                    html += `<div class="result-item ${data.actual_mean <= goalMean ? 'highlight' : ''}">
-                        <div class="value">${meanStatus} ${data.actual_mean}</div>
-                        <div class="label">平均血糖 (目标: <${goalMean})</div>
-                    </div>`;
-                    
-                    const gvStatus = data.actual_gv <= goalGv ? '✅' : '❌';
-                    html += `<div class="result-item ${data.actual_gv <= goalGv ? 'highlight' : ''}">
-                        <div class="value">${gvStatus} ${data.actual_gv}%</div>
-                        <div class="label">波动 (目标: <${goalGv}%)</div>
-                    </div>`;
-                    
-                    html += '</div>';
-                    
-                    const score = [data.actual_tir >= goalTir, data.actual_mean <= goalMean, data.actual_gv <= goalGv].filter(x => x).length;
-                    html += `<div style="margin-top:16px;padding:16px;background:#f3f4f6;border-radius:8px;text-align:center">
-                        <strong>达成率: ${Math.round(score/3*100)}%</strong> (${score}/3)
-                    </div>`;
-                }
-                
-                html += '</div>';
-                document.getElementById('goalsResult').innerHTML = html;
-            } catch (e) {
-                document.getElementById('goalsResult').innerHTML = `错误: ${e.message}`;
-            }
-        }
-
-        // 生理期分析
-        let menstrualLog = [];
-        
-        function addMenstrualPeriod() {
-            const startStr = document.getElementById('menstrualStart').value;
-            if (!startStr) { alert('请选择开始日期'); return; }
-            
-            menstrualLog.push({start: startStr});
-            
-            document.getElementById('menstrualResult').innerHTML = `<div style="margin-top:12px;padding:8px;background:#d1fae5;border-radius:8px">
-                已记录: ${startStr} <br>共 ${menstrualLog.length} 次记录
-            </div>`;
-        }
-        
-        async function analyzeMenstrual() {
-            const text = document.getElementById('menstrualCgmText').value;
-            
-            if (menstrualLog.length === 0) { alert('请先添加生理期记录'); return; }
-            if (!text.trim()) { alert('请输入CGM数据'); return; }
-            
-            document.getElementById('menstrualResult').innerHTML = '<div class="loading">分析中...</div>';
-            
-            try {
-                const res = await fetch('/api/analysis/menstrual', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: text, periods: menstrualLog})
-                });
-                const data = await res.json();
-                
-                let html = '<div class="result-card"><h3>💊 生理期血糖影响</h3>';
-                
-                if (data.error) {
-                    html += `<p>${data.error}</p>`;
-                } else if (data.menstrual_impact) {
-                    const impact = data.menstrual_impact;
-                    
-                    if (impact['经期 (Day 1-5)'] && impact['卵泡期 (Day 6-14)']) {
-                        html += `<div class="result-grid">
-                            <div class="result-item"><div class="value">${impact['经期 (Day 1-5)'].mean}</div><div class="label">经期平均</div></div>
-                            <div class="result-item"><div class="value">${impact['卵泡期 (Day 6-14)'].mean}</div><div class="label">卵泡期平均</div></div>
-                        </div>`;
-                        
-                        if (impact.comparison) {
-                            html += `<div style="margin-top:12px;padding:12px;background:#fef3c7;border-radius:8px">
-                                ${impact.comparison.note}
-                            </div>`;
-                        }
-                    } else {
-                        html += '<p>数据不足，无法分析</p>';
-                    }
-                }
-                
-                html += '</div>';
-                document.getElementById('menstrualResult').innerHTML = html;
-            } catch (e) {
-                document.getElementById('menstrualResult').innerHTML = `错误: ${e.message}`;
-            }
-        }
-
-        // 家庭共享
-        let familyMembers = [];
-        
-        function addFamilyMember() {
-            const name = document.getElementById('familyMemberName').value;
-            const relation = document.getElementById('familyMemberRelation').value;
-            
-            if (!name) { alert('请输入成员名称'); return; }
-            
-            familyMembers.push({name, relation, id: Date.now()});
-            
-            renderFamilyList();
-        }
-        
-        function renderFamilyList() {
-            const list = document.getElementById('familyList');
-            
-            if (familyMembers.length === 0) {
-                list.innerHTML = '<p style="color:#6b7280">暂无家庭成员</p>';
-                return;
-            }
-            
-            let html = '<div style="display:flex;flex-direction:column;gap:8px">';
-            familyMembers.forEach(m => {
-                html += `<div style="padding:12px;background:#f3f4f6;border-radius:8px;display:flex;justify-content:space-between;align-items:center">
-                    <div>
-                        <strong>${m.name}</strong>
-                        <span style="color:#6b7280;font-size:12px"> - ${m.relation}</span>
-                    </div>
-                    <button onclick="removeFamilyMember(${m.id})" style="background:none;border:none;color:red;cursor:pointer">✕</button>
-                </div>`;
-            });
-            html += '</div>';
-            list.innerHTML = html;
-        }
-        
-        function removeFamilyMember(id) {
-            familyMembers = familyMembers.filter(m => m.id !== id);
-            renderFamilyList();
-        }
-        
-        function generateShareLink() {
-            // 生成模拟分享链接
-            const token = btoa(Date.now() + '-' + Math.random().toString(36).substr(2));
-            const link = `${window.location.origin}/share/${token}`;
-            
-            document.getElementById('shareLinkResult').innerHTML = `
-                <div style="padding:12px;background:#d1fae5;border-radius:8px">
-                    分享链接 (有效期24小时):<br>
-                    <a href="${link}" target="_blank">${link}</a>
-                </div>
-            `;
-        }
-
-        // 保险导出
-        async function exportInsuranceReport() {
-            const reportType = document.getElementById('insuranceReportType').value;
-            const text = document.getElementById('insuranceCgmText').value;
-            
-            if (!text.trim()) { alert('请输入CGM数据'); return; }
-            
-            document.getElementById('insuranceResult').innerHTML = '<div class="loading">生成中...</div>';
-            
-            try {
-                const res = await fetch('/api/insurance/export', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: text, report_type: reportType})
-                });
-                const data = await res.json();
-                
-                if (data.error) {
-                    document.getElementById('insuranceResult').innerHTML = `<p style="color:red">${data.error}</p>`;
-                    return;
-                }
-                
-                // 下载
-                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `insurance_report_${new Date().toISOString().slice(0,10)}.json`;
-                a.click();
-                
-                document.getElementById('insuranceResult').innerHTML = '<p style="color:green">✓ 报告已导出</p>';
-            } catch (e) {
-                document.getElementById('insuranceResult').innerHTML = `错误: ${e.message}`;
-            }
-        }
-
-        // 数据备份
-        function exportAllData() {
-            const text = document.getElementById('backupCgmText').value;
-            
-            if (!text.trim()) { alert('请先输入CGM数据'); return; }
-            
-            const data = {
-                export_date: new Date().toISOString(),
-                version: '2.4',
-                cgm_data: text,
-                family_members: familyMembers,
-                settings: localStorage.getItem('glyconutri_settings') || {}
-            };
-            
-            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `glyconutri_backup_${new Date().toISOString().slice(0,10)}.json`;
-            a.click();
-            
-            document.getElementById('backupResult').innerHTML = '<p style="color:green">✓ 数据已导出</p>';
-        }
-        
-        function importData() {
-            const input = document.getElementById('importFile');
-            const file = input.files[0];
-            
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = e => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    
-                    if (data.cgm_data) {
-                        document.getElementById('backupCgmText').value = data.cgm_data;
-                    }
-                    if (data.family_members) {
-                        familyMembers = data.family_members;
-                        renderFamilyList();
-                    }
-                    
-                    document.getElementById('backupResult').innerHTML = '<p style="color:green">✓ 数据已导入</p>';
-                } catch (err) {
-                    alert('导入失败: ' + err.message);
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        // AI教练
-        async function sendToCoach() {
-            const input = document.getElementById('coachInput');
-            const message = input.value.trim();
-            
-            if (!message) return;
-            
-            // 添加用户消息
-            const messagesDiv = document.getElementById('coachMessages');
-            messagesDiv.innerHTML += `<div style="margin-bottom:8px;text-align:right">
-                <span style="background:#10b981;color:white;padding:8px 12px;border-radius:12px 12px 0 12px">${message}</span>
-            </div>`;
-            
-            input.value = '';
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            
-            // 发送请求
-            try {
-                const res = await fetch('/api/coach/chat', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({message})
-                });
-                const data = await res.json();
-                
-                messagesDiv.innerHTML += `<div style="margin-bottom:8px">
-                    <span style="background:#3b82f6;color:white;padding:8px 12px;border-radius:12px 12px 12px 0">${data.reply}</span>
-                </div>`;
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            } catch (e) {
-                messagesDiv.innerHTML += `<div style="margin-bottom:8px;color:red">错误: ${e.message}</div>`;
-            }
-        }
-        
-        function quickAsk(question) {
-            document.getElementById('coachInput').value = question;
-            sendToCoach();
-        }
-
-        // 生成报告
         async function generateReport() {
             const reportType = document.getElementById('reportType').value;
             const text = document.getElementById('reportCgmText').value;
@@ -3809,6 +3562,76 @@ async def api_coach_chat(request: Request):
     
     reply = chat(message)
     return {"reply": reply}
+
+
+@app.post("/api/research/abtest")
+async def api_research_abtest(request: Request):
+    """AB测试分析"""
+    from glyconutri.clinical import ab_test
+    
+    body = await request.json()
+    data_a = body.get('group_a', '')
+    data_b = body.get('group_b', '')
+    
+    try:
+        # Parse data A
+        lines_a = [l.strip() for l in data_a.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines_a[0]:
+            df_a = pd.read_csv(io.StringIO('\n'.join(lines_a)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines_a[0]:
+            df_a = pd.read_csv(io.StringIO('\n'.join(lines_a)), on_bad_lines='skip')
+        else:
+            df_a = pd.read_csv(io.StringIO('\n'.join(lines_a)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = df_a.columns[0]
+        glucose_col = df_a.columns[-1]
+        df_a['timestamp'] = pd.to_datetime(df_a[time_col])
+        df_a['glucose'] = pd.to_numeric(df_a[glucose_col], errors='coerce')
+        if df_a['glucose'].max() < 30:
+            df_a['glucose'] = df_a['glucose'] * 18
+        df_a = df_a.dropna(subset=['glucose'])
+        
+        # Parse data B
+        lines_b = [l.strip() for l in data_b.split('\n') if l.strip() and not l.startswith('#')]
+        if '\t' in lines_b[0]:
+            df_b = pd.read_csv(io.StringIO('\n'.join(lines_b)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines_b[0]:
+            df_b = pd.read_csv(io.StringIO('\n'.join(lines_b)), on_bad_lines='skip')
+        else:
+            df_b = pd.read_csv(io.StringIO('\n'.join(lines_b)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        df_b['timestamp'] = pd.to_datetime(df_b[time_col])
+        df_b['glucose'] = pd.to_numeric(df_b[glucose_col], errors='coerce')
+        if df_b['glucose'].max() < 30:
+            df_b['glucose'] = df_b['glucose'] * 18
+        df_b = df_b.dropna(subset=['glucose'])
+        
+        # Run AB test
+        result = ab_test(df_a, df_b)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/research/correlation")
+async def api_research_correlation(request: Request):
+    """相关性分析"""
+    body = await request.json()
+    # Simplified correlation
+    return {"message": "相关性分析需要更多参数"}
+
+
+@app.post("/api/research/survival")
+async def api_research_survival(request: Request):
+    """生存分析"""
+    return {"message": "生存分析功能开发中"}
+
+
+@app.post("/api/research/regression")
+async def api_research_regression(request: Request):
+    """回归分析"""
+    return {"message": "回归分析功能开发中"}
 
 
 if __name__ == "__main__":
