@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import base64
 import io
 
-from glyconutri.cgm_adapters import load_cgm_data
+from glyconutri.cgm_adapters import parse_cgm_data
 from glyconutri.cgm import calculate_tir, calculate_gv
 from glyconutri.food import get_food_info, search_foods, list_foods_by_gi_category
 from glyconutri.analysis import analyze_glucose
@@ -2619,33 +2619,14 @@ async def home():
 @app.post("/api/cgm/analyze")
 async def api_cgm_analyze(request: Request):
     """分析 CGM 数据"""
+    from glyconutri.cgm_adapters import parse_cgm_data
+    
     body = await request.json()
     text = body.get('data', '')
     
     try:
-        # 解析数据 - 过滤空行和注释
-        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
-        
-        if not lines:
-            return {"error": "数据为空"}
-        
-        # 直接用 pandas 自动检测分隔符和表头
-        import io
-        first_line = lines[0]
-        
-        # 检测分隔符
-        if '\t' in first_line:
-            sep = '\t'
-        elif ',' in first_line:
-            sep = ','
-        else:
-            sep = r'\s+'
-        
-        # 尝试读取，pandas 自动处理表头
-        try:
-            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=sep)
-        except:
-            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=sep, header=None)
+        # 使用新的解析器
+        df = parse_cgm_data(text)
         
         cols = df.columns.tolist()
         

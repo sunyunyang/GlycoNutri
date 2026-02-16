@@ -1,200 +1,127 @@
 """
-CGM 设备适配器
-支持 Dexcom, FreeStyle Libre, Medtronic 等主流 CGM 设备
+CGM 数据适配器 - 支持多种格式
 """
 
 import pandas as pd
 from datetime import datetime
-from typing import Dict, List, Optional
-import re
+from typing import Optional
 
 
-class CGMDeviceAdapter:
-    """CGM 设备适配器基类"""
-    
-    def parse(self, filepath: str) -> pd.DataFrame:
-        """解析 CGM 数据文件"""
-        raise NotImplementedError
-
-
-class DexcomG6Adapter(CGMDeviceAdapter):
-    """Dexcom G6 适配器"""
-    
-    def parse(self, filepath: str) -> pd.DataFrame:
-        """解析 Dexcom G6 导出数据"""
-        if filepath.endswith('.csv'):
-            # Dexcom CSV 格式
-            df = pd.read_csv(filepath)
-            
-            # 查找时间列和血糖列
-            time_col = None
-            glucose_col = None
-            
-            for col in df.columns:
-                col_lower = col.lower()
-                if 'timestamp' in col_lower or 'time' in col_lower or 'date' in col_lower:
-                    time_col = col
-                if 'glucose' in col_lower or 'sensor glucose' in col_lower or 'sg' in col_lower:
-                    glucose_col = col
-            
-            if time_col and glucose_col:
-                df['timestamp'] = pd.to_datetime(df[time_col])
-                df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
-                return df[['timestamp', 'glucose']].dropna()
-            
-        elif filepath.endswith('.json'):
-            df = pd.read_json(filepath)
-            return self._parse_json(df)
-        
-        raise ValueError("不支持的 Dexcom 文件格式")
-
-
-class DexcomG7Adapter(CGMDeviceAdapter):
-    """Dexcom G7 适配器"""
-    
-    def parse(self, filepath: str) -> pd.DataFrame:
-        """解析 Dexcom G7 导出数据"""
-        return DexcomG6Adapter().parse(filepath)  # G7 格式与 G6 相同
-
-
-class FreeStyleLibreAdapter(CGMDeviceAdapter):
-    """FreeStyle Libre 适配器"""
-    
-    def parse(self, filepath: str) -> pd.DataFrame:
-        """解析 Libre 数据"""
-        if filepath.endswith('.csv'):
-            df = pd.read_csv(filepath)
-            
-            # Libre 通常有这些列名
-            time_col = None
-            glucose_col = None
-            
-            for col in df.columns:
-                col_lower = col.lower()
-                if 'timestamp' in col_lower or 'time' in col_lower:
-                    time_col = col
-                if 'glucose' in col_lower or 'historic glucose' in col_lower or 'scan glucose' in col_lower:
-                    glucose_col = col
-            
-            if time_col and glucose_col:
-                df['timestamp'] = pd.to_datetime(df[time_col])
-                df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
-                return df[['timestamp', 'glucose']].dropna()
-        
-        elif filepath.endswith('.json'):
-            df = pd.read_json(filepath)
-            return self._parse_json(df)
-        
-        raise ValueError("不支持的 Libre 文件格式")
-
-
-class MedtronicAdapter(CGMDeviceAdapter):
-    """Medtronic CGM 适配器"""
-    
-    def parse(self, filepath: str) -> pd.DataFrame:
-        """解析 Medtronic CGM 数据"""
-        if filepath.endswith('.csv'):
-            df = pd.read_csv(filepath)
-            
-            time_col = None
-            glucose_col = None
-            
-            for col in df.columns:
-                col_lower = col.lower()
-                if 'timestamp' in col_lower or 'time' in col_lower:
-                    time_col = col
-                if 'sensor glucose' in col_lower or 'sg' in col_lower:
-                    glucose_col = col
-            
-            if time_col and glucose_col:
-                df['timestamp'] = pd.to_datetime(df[time_col])
-                df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
-                return df[['timestamp', 'glucose']].dropna()
-        
-        raise ValueError("不支持的 Medtronic 文件格式")
-
-
-class ManualInputAdapter(CGMDeviceAdapter):
-    """手动输入适配器 - 支持常见格式"""
-    
-    def parse(self, filepath: str) -> pd.DataFrame:
-        """解析手动记录的血糖数据"""
-        if filepath.endswith('.csv'):
-            df = pd.read_csv(filepath)
-            
-            # 尝试自动识别列
-            cols = df.columns.tolist()
-            
-            # 时间列
-            time_col = next((c for c in cols if any(k in c.lower() for k in ['time', 'date', 'timestamp'])), None)
-            # 血糖列
-            glucose_col = next((c for c in cols if any(k in c.lower() for k in ['glucose', 'blood sugar', 'bs', 'bg'])), None)
-            
-            if time_col and glucose_col:
-                df['timestamp'] = pd.to_datetime(df[time_col])
-                df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
-                return df[['timestamp', 'glucose']].dropna()
-        
-        raise ValueError("无法解析文件，请检查格式")
-
-
-# 设备适配器注册表
-ADAPTERS = {
-    'dexcom': DexcomG6Adapter,
-    'dexcom_g6': DexcomG6Adapter,
-    'dexcom_g7': DexcomG7Adapter,
-    'libre': FreeStyleLibreAdapter,
-    'freestyle': FreeStyleLibreAdapter,
-    'medtronic': MedtronicAdapter,
-    'manual': ManualInputAdapter,
-}
-
-
-def detect_device(filepath: str) -> str:
-    """自动检测 CGM 设备类型"""
-    filename = filepath.lower()
-    
-    if 'dexcom' in filename:
-        return 'dexcom'
-    elif 'libre' in filename or 'freestyle' in filename:
-        return 'libre'
-    elif 'medtronic' in filename:
-        return 'medtronic'
-    else:
-        return 'manual'
-
-
-def load_cgm_data(filepath: str, device: str = None) -> pd.DataFrame:
-    """加载 CGM 数据，自动检测设备类型
-    
-    Args:
-        filepath: CGM 数据文件路径
-        device: 设备类型，可选 (会自动检测)
-    
-    Returns:
-        包含 timestamp 和 glucose 列的 DataFrame
+def parse_wxqi_format(text: str) -> pd.DataFrame:
     """
-    if device is None:
-        device = detect_device(filepath)
+    解析WXQI/微泰格式 CGM 数据
     
-    if device not in ADAPTERS:
-        raise ValueError(f"不支持的设备类型: {device}")
+    格式: ID 日期 时间 记录类型 血糖(mmol/L)
+    示例: 69137 2024/03/16 12:03 0 15.3
+    """
+    lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
     
-    adapter = ADAPTERS[device]()
-    df = adapter.parse(filepath)
+    # 跳过表头
+    data_lines = []
+    for line in lines:
+        # 检查是否是数据行 (第一列是数字)
+        parts = line.split()
+        if len(parts) >= 5 and parts[0].isdigit():
+            data_lines.append(line)
     
-    # 排序并去重
-    df = df.sort_values('timestamp').drop_duplicates(subset=['timestamp'])
+    if not data_lines:
+        raise ValueError("No valid data found")
     
-    return df.reset_index(drop=True)
+    # 解析数据
+    data = []
+    for line in data_lines:
+        parts = line.split()
+        if len(parts) >= 5:
+            # WXQI格式: ID 日期 时间 记录类型 血糖
+            date_str = parts[1]  # 2024/03/16
+            time_str = parts[2]  # 12:03
+            glucose = float(parts[4])  # mmol/L
+            
+            timestamp = pd.to_datetime(f"{date_str} {time_str}")
+            
+            # 转换为 mg/dL
+            glucose_mgdl = glucose * 18
+            
+            data.append({
+                'timestamp': timestamp,
+                'glucose': glucose_mgdl
+            })
+    
+    df = pd.DataFrame(data)
+    return df.sort_values('timestamp')
 
 
-# 便捷函数
-def load_dexcom(filepath: str) -> pd.DataFrame:
-    """加载 Dexcom 数据"""
-    return load_cgm_data(filepath, 'dexcom')
+def parse_standard_format(text: str) -> pd.DataFrame:
+    """
+    解析标准格式 CGM 数据
+    支持: CSV, TSV, 空格分隔
+    自动检测分隔符和列名
+    """
+    lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+    
+    if not lines:
+        raise ValueError("Empty data")
+    
+    # 检测分隔符
+    first_line = lines[0]
+    if '\t' in first_line:
+        sep = '\t'
+    elif ',' in first_line:
+        sep = ','
+    else:
+        sep = r'\s+'
+    
+    # 读取数据
+    import io
+    try:
+        df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=sep)
+    except:
+        df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=sep, header=None)
+    
+    cols = df.columns.tolist()
+    
+    # 智能查找时间列和血糖列
+    time_col = None
+    glucose_col = None
+    
+    for col in cols:
+        c = str(col).lower()
+        if not time_col and any(k in c for k in ['time', 'date', 'timestamp', 'datetime']):
+            time_col = col
+        if not glucose_col and any(k in c for k in ['glucose', 'value', 'sg', '血糖']):
+            glucose_col = col
+    
+    # 默认：第1列=时间，最后1列=血糖
+    if not time_col:
+        time_col = cols[0]
+    if not glucose_col:
+        glucose_col = cols[-1]
+    
+    # 解析
+    df['timestamp'] = pd.to_datetime(df[time_col], errors='coerce')
+    df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+    
+    # mmol/L 转 mg/dL (值 < 30 说明是 mmol/L)
+    if df['glucose'].max() < 30:
+        df['glucose'] = df['glucose'] * 18
+    
+    df = df.dropna(subset=['glucose', 'timestamp'])
+    return df.sort_values('timestamp')
 
 
-def load_libre(filepath: str) -> pd.DataFrame:
-    """加载 FreeStyle Libre 数据"""
-    return load_cgm_data(filepath, 'libre')
+def parse_cgm_data(text: str) -> pd.DataFrame:
+    """
+    自动检测并解析 CGM 数据
+    尝试多种格式
+    """
+    # 尝试 WXQI 格式 (中国常见)
+    try:
+        return parse_wxqi_format(text)
+    except:
+        pass
+    
+    # 尝试标准格式
+    try:
+        return parse_standard_format(text)
+    except Exception as e:
+        raise ValueError(f"无法解析数据: {str(e)}")
