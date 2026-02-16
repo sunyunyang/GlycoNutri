@@ -2663,28 +2663,28 @@ async def api_cgm_analyze(request: Request):
             # 空格分隔 - 可能是无表头数据
             df = pd.read_csv(io.StringIO(data_text), sep=r'\s+', on_bad_lines='skip', header=None)
         
-        # 标准化列名
         cols = df.columns.tolist()
         
-        # 无表头时尝试识别：第1列是ID，第2+3列是时间，第4列是葡萄糖
-        if len(cols) >= 4 and not any('time' in str(c).lower() or 'date' in str(c).lower() or 'glucose' in str(c).lower() for c in cols):
-            # 根据实际列数命名
-            col_names = ['id', 'date', 'time', 'record_type', 'glucose'][:len(cols)]
-            df.columns = col_names
+        # 简化版：直接用第1列做时间，最后1列做血糖
+        # 同时尝试智能识别
+        time_col = None
+        glucose_col = None
         
-        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['timestamp', 'datetime', '日期时间'])), None)
+        for col in cols:
+            c = str(col).lower()
+            if not time_col and any(k in c for k in ['time', 'date', 'timestamp', 'datetime']):
+                time_col = col
+            if not glucose_col and any(k in c for k in ['glucose', 'value', 'sg', '血糖']):
+                glucose_col = col
+        
+        # 默认：第1列=时间，最后1列=血糖
         if not time_col:
-            # 尝试找日期+时间组合
-            if 'date' in df.columns and 'time' in df.columns:
-                df['datetime'] = df['date'].astype(str) + ' ' + df['time'].astype(str)
-                time_col = 'datetime'
-            else:
-                time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间', '日期'])), None)
-        
-        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖', 'mg', 'mmol'])), None)
+            time_col = cols[0]
+        if not glucose_col:
+            glucose_col = cols[-1]
         
         if not time_col or not glucose_col:
-            return {"error": f"未找到时间或血糖列。检测到的列: {list(df.columns)}"}
+            return {"error": f"未找到时间或血糖列。检测到的列: {cols}"}
         
         df['timestamp'] = pd.to_datetime(df[time_col])
         df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
