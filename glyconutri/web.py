@@ -2626,54 +2626,39 @@ async def api_cgm_analyze(request: Request):
         # 解析数据 - 过滤空行和注释
         lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
         
-        # 跳过可能的前几行元数据，找表头
-        header_idx = 0
-        for i, line in enumerate(lines):
-            # 表头应该包含时间或血糖相关关键词（中英文）
-            # 且不能是纯中文名字或其他非数据行
-            lower_line = line.lower()
-            is_header = any(k in lower_line for k in ['time', 'date', 'glucose', 'value', '血糖', '时间', 'sg', 'glucose'])
-            # 跳过纯中文行（名字、标题等）
-            is_chinese_only = all('\u4e00' <= c <= '\u9fff' for c in line.replace(',', '').replace('\t', '').replace(' ', ''))
-            # 也跳过纯数字开头的行（可能是无表头的数据行）
-            is_data_row = line[0].isdigit() if line else False
-            if is_data_row:
-                header_idx = i
-                break
-            if is_header and not is_chinese_only:
-                header_idx = i
-                break  # 找到表头就跳出
-        
-        # 取表头行之后的数据
-        data_text = '\n'.join(lines[header_idx:])
-        
         if not lines:
             return {"error": "数据为空"}
         
-        # 检测分隔符
-        first_line = lines[header_idx]
+        # 直接用 pandas 自动检测分隔符和表头
         import io
+        first_line = lines[0]
+        
+        # 检测分隔符
         if '\t' in first_line:
-            # TAB 分隔 (TXT)
-            df = pd.read_csv(io.StringIO(data_text), sep='\t', on_bad_lines='skip')
+            sep = '\t'
         elif ',' in first_line:
-            # CSV 格式
-            df = pd.read_csv(io.StringIO(data_text), on_bad_lines='skip')
+            sep = ','
         else:
-            # 空格分隔 - 可能是无表头数据
-            df = pd.read_csv(io.StringIO(data_text), sep=r'\s+', on_bad_lines='skip', header=None)
+            sep = r'\s+'
+        
+        # 尝试读取，pandas 自动处理表头
+        try:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=sep)
+        except:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=sep, header=None)
         
         cols = df.columns.tolist()
         
-        # 简化版：直接用第1列做时间，最后1列做血糖
-        # 同时尝试智能识别
+        # 智能查找时间列和血糖列
         time_col = None
         glucose_col = None
         
         for col in cols:
             c = str(col).lower()
+            # 时间列
             if not time_col and any(k in c for k in ['time', 'date', 'timestamp', 'datetime']):
                 time_col = col
+            # 血糖列
             if not glucose_col and any(k in c for k in ['glucose', 'value', 'sg', '血糖']):
                 glucose_col = col
         
@@ -2686,7 +2671,7 @@ async def api_cgm_analyze(request: Request):
         if not time_col or not glucose_col:
             return {"error": f"未找到时间或血糖列。检测到的列: {cols}"}
         
-        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['timestamp'] = pd.to_datetime(df[time_col], errors='coerce')
         df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
         
         # mmol/L 转 mg/dL (如果值小于 30，说明是 mmol/L)
