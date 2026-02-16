@@ -320,11 +320,14 @@ HTML_HOME = """
             <div class="tabs">
                 <div class="tab active" data-tab="cgm">📊 CGM 分析</div>
                 <div class="tab" data-tab="trend">📈 趋势分析</div>
+                <div class="tab" data-tab="circadian">🌙 昼夜节律</div>
+                <div class="tab" data-tab="biomarker">🧬 生物标志物</div>
                 <div class="tab" data-tab="meal">🍽️ 餐后分析</div>
                 <div class="tab" data-tab="meal-nutrition">🥗 餐食分析</div>
                 <div class="tab" data-tab="exercise">🏃 运动分析</div>
                 <div class="tab" data-tab="sleep">😴 睡眠分析</div>
                 <div class="tab" data-tab="medication">💊 药物分析</div>
+                <div class="tab" data-tab="report">📋 报告</div>
                 <div class="tab" data-tab="settings">⚙️ 设置</div>
                 <div class="tab" data-tab="food">🔍 食物查询</div>
                 <div class="tab" data-tab="history">📋 历史记录</div>
@@ -604,6 +607,56 @@ HTML_HOME = """
                     </div>
                     
                     <div id="foodResult"></div>
+                </div>
+                
+                <!-- 昼夜节律分析 -->
+                <div class="tab-content" id="circadian">
+                    <div class="form-group">
+                        <label>🌙 上传 CGM 数据</label>
+                        <textarea id="circadianCgmText" rows="6" placeholder="上传多日 CGM 数据进行昼夜节律分析"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeCircadian()" style="width: 100%;">
+                        分析昼夜节律
+                    </button>
+                    
+                    <div id="circadianResult"></div>
+                </div>
+                
+                <!-- 生物标志物分析 -->
+                <div class="tab-content" id="biomarker">
+                    <div class="form-group">
+                        <label>🧬 上传 CGM 数据</label>
+                        <textarea id="biomarkerCgmText" rows="6" placeholder="上传 CGM 数据进行生物标志物分析"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="analyzeBiomarker()" style="width: 100%;">
+                        分析生物标志物
+                    </button>
+                    
+                    <div id="biomarkerResult"></div>
+                </div>
+                
+                <!-- 报告 -->
+                <div class="tab-content" id="report">
+                    <div class="form-group">
+                        <label>📋 选择报告类型</label>
+                        <select id="reportType">
+                            <option value="weekly">周报 (近7天)</option>
+                            <option value="monthly">月报 (近30天)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>📊 CGM 数据</label>
+                        <textarea id="reportCgmText" rows="6" placeholder="上传 CGM 数据生成报告"></textarea>
+                    </div>
+                    
+                    <button class="btn" onclick="generateReport()" style="width: 100%;">
+                        生成报告
+                    </button>
+                    
+                    <div id="reportResult"></div>
                 </div>
                 
                 <!-- 设置 -->
@@ -1097,6 +1150,174 @@ HTML_HOME = """
             link.href = encodeURI(csvContent);
             link.download = `glyconutri_report_${new Date().toISOString().slice(0,10)}.csv`;
             link.click();
+        }
+        
+        // 昼夜节律分析
+        async function analyzeCircadian() {
+            const text = document.getElementById('circadianCgmText').value;
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            document.getElementById('circadianResult').innerHTML = '<div class="loading">分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/circadian/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('circadianResult').innerHTML = `<div class="result-card" style="background:#fee2e2">${data.error}</div>`;
+                    return;
+                }
+                
+                let html = '<div class="result-card"><h3>🌙 昼夜节律分析</h3>';
+                
+                // 黎明现象
+                if (data.dawn_phenomenon) {
+                    html += `<div style="margin:8px 0;padding:8px;background:#fef3c7;border-radius:8px">
+                        黎明现象: ${data.dawn_phenomenon.severity} (上升 ${data.dawn_phenomenon.rise_amount} mg/dL)
+                    </div>`;
+                }
+                
+                // Somogyi效应
+                if (data.somogyi_effect && data.somogyi_effect.somogyi_effect) {
+                    html += `<div style="margin:8px 0;padding:8px;background:#fee2e2;border-radius:8px">
+                        ⚠️ Somogyi效应检测到
+                    </div>`;
+                }
+                
+                // 节律稳定性
+                if (data.circadian_stability) {
+                    html += `<div class="result-grid">
+                        <div class="result-item highlight">
+                            <div class="value">${data.circadian_stability.stability_score}</div>
+                            <div class="label">稳定性评分</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="value">${data.circadian_stability.stability_level}</div>
+                            <div class="label">稳定等级</div>
+                        </div>
+                    </div>`;
+                }
+                
+                html += '</div>';
+                document.getElementById('circadianResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('circadianResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+        
+        // 生物标志物分析
+        async function analyzeBiomarker() {
+            const text = document.getElementById('biomarkerCgmText').value;
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            document.getElementById('biomarkerResult').innerHTML = '<div class="loading">分析中...</div>';
+            
+            try {
+                const res = await fetch('/api/biomarker/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('biomarkerResult').innerHTML = `<div class="result-card" style="background:#fee2e2">${data.error}</div>`;
+                    return;
+                }
+                
+                let html = '<div class="result-card"><h3>🧬 生物标志物分析</h3>';
+                
+                // 风险评分
+                if (data.risk_score) {
+                    html += `<div class="result-grid">
+                        <div class="result-item highlight">
+                            <div class="value">${data.risk_score.risk_score}</div>
+                            <div class="label">风险评分</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="value">${data.risk_score.risk_level}</div>
+                            <div class="label">风险等级</div>
+                        </div>
+                    </div>`;
+                }
+                
+                // 表型分类
+                if (data.phenotype) {
+                    html += `<div style="margin-top:12px"><strong>表型:</strong> ${data.phenotype.primary_type} / ${data.phenotype.variability_type}</div>`;
+                }
+                
+                // 关键指标
+                if (data.biomarkers) {
+                    html += `<div class="result-grid" style="margin-top:12px">
+                        <div class="result-item"><div class="value">${data.biomarkers.tir}%</div><div class="label">TIR</div></div>
+                        <div class="result-item"><div class="value">${data.biomarkers.tbr}%</div><div class="label">TBR</div></div>
+                        <div class="result-item"><div class="value">${data.biomarkers.tar}%</div><div class="label">TAR</div></div>
+                        <div class="result-item"><div class="value">${data.biomarkers.mage}</div><div class="label">MAGE</div></div>
+                    </div>`;
+                }
+                
+                html += '</div>';
+                document.getElementById('biomarkerResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('biomarkerResult').innerHTML = `错误: ${e.message}`;
+            }
+        }
+        
+        // 生成报告
+        async function generateReport() {
+            const reportType = document.getElementById('reportType').value;
+            const text = document.getElementById('reportCgmText').value;
+            if (!text.trim()) { alert('请输入CGM数据'); return; }
+            
+            document.getElementById('reportResult').innerHTML = '<div class="loading">生成中...</div>';
+            
+            try {
+                const res = await fetch('/api/report/' + reportType, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: text})
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    document.getElementById('reportResult').innerHTML = `<div class="result-card" style="background:#fee2e2">${data.error}</div>`;
+                    return;
+                }
+                
+                let html = '<div class="result-card"><h3>📋 ' + (reportType === 'weekly' ? '周报' : '月报') + '</h3>';
+                
+                // 概览
+                if (data.overview) {
+                    html += `<div class="result-grid">
+                        <div class="result-item highlight"><div class="value">${data.overview.tir}%</div><div class="label">TIR</div></div>
+                        <div class="result-item"><div class="value">${data.overview.mean_glucose}</div><div class="label">平均血糖</div></div>
+                        <div class="result-item"><div class="value">${data.overview.gv}%</div><div class="label">波动</div></div>
+                    </div>`;
+                }
+                
+                // 目标达成
+                if (data.goals) {
+                    html += '<div style="margin-top:12px"><strong>目标达成:</strong></div><ul style="padding-left:20px;margin-top:8px">';
+                    data.goals.forEach(g => { html += `<li>${g}</li>`; });
+                    html += '</ul>';
+                }
+                
+                // 建议
+                if (data.recommendations && data.recommendations.length > 0) {
+                    html += '<div style="margin-top:12px"><strong>建议:</strong></div><ul style="padding-left:20px;margin-top:8px">';
+                    data.recommendations.forEach(r => { html += `<li>${r}</li>`; });
+                    html += '</ul>';
+                }
+                
+                html += '</div>';
+                document.getElementById('reportResult').innerHTML = html;
+            } catch (e) {
+                document.getElementById('reportResult').innerHTML = `错误: ${e.message}`;
+            }
         }
         
         // 分析 CGM
@@ -2146,6 +2367,134 @@ async def api_chart_data(request: Request):
         df = df.dropna(subset=['glucose']).sort_values('timestamp')
         
         return get_chart_data(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/circadian/analyze")
+async def api_circadian_analyze(request: Request):
+    """昼夜节律分析"""
+    from glyconutri.circadian import analyze_circadian
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return analyze_circadian(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/biomarker/analyze")
+async def api_biomarker_analyze(request: Request):
+    """生物标志物分析"""
+    from glyconutri.circadian import analyze_biomarkers
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return analyze_biomarkers(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/report/weekly")
+async def api_report_weekly(request: Request):
+    """周报"""
+    from glyconutri.analysis_enhanced import generate_weekly_report
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return generate_weekly_report(df)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/report/monthly")
+async def api_report_monthly(request: Request):
+    """月报"""
+    from glyconutri.analysis_enhanced import generate_monthly_report
+    
+    body = await request.json()
+    text = body.get('data', '')
+    
+    try:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and not l.startswith('#')]
+        import io
+        if '\t' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep='\t', on_bad_lines='skip')
+        elif ',' in lines[0]:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), on_bad_lines='skip')
+        else:
+            df = pd.read_csv(io.StringIO('\n'.join(lines)), sep=r'\s+', on_bad_lines='skip', header=None)
+        
+        time_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['time', 'date', '时间'])), df.columns[0])
+        glucose_col = next((c for c in df.columns if any(k in str(c).lower() for k in ['glucose', 'value', 'sg', '血糖'])), df.columns[-1])
+        
+        df['timestamp'] = pd.to_datetime(df[time_col])
+        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
+        if df['glucose'].max() < 30:
+            df['glucose'] = df['glucose'] * 18
+        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        
+        return generate_monthly_report(df)
     except Exception as e:
         return {"error": str(e)}
 
