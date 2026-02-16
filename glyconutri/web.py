@@ -2625,41 +2625,16 @@ async def api_cgm_analyze(request: Request):
     text = body.get('data', '')
     
     try:
-        # 使用新的解析器
+        # 使用新的解析器（已包含所有格式支持）
         df = parse_cgm_data(text)
         
-        cols = df.columns.tolist()
+        # 解析器已返回标准格式：timestamp, glucose
+        if df is None or df.empty:
+            return {"error": "无法解析数据"}
         
-        # 智能查找时间列和血糖列
-        time_col = None
-        glucose_col = None
-        
-        for col in cols:
-            c = str(col).lower()
-            # 时间列
-            if not time_col and any(k in c for k in ['time', 'date', 'timestamp', 'datetime']):
-                time_col = col
-            # 血糖列
-            if not glucose_col and any(k in c for k in ['glucose', 'value', 'sg', '血糖']):
-                glucose_col = col
-        
-        # 默认：第1列=时间，最后1列=血糖
-        if not time_col:
-            time_col = cols[0]
-        if not glucose_col:
-            glucose_col = cols[-1]
-        
-        if not time_col or not glucose_col:
-            return {"error": f"未找到时间或血糖列。检测到的列: {cols}"}
-        
-        df['timestamp'] = pd.to_datetime(df[time_col], errors='coerce')
-        df['glucose'] = pd.to_numeric(df[glucose_col], errors='coerce')
-        
-        # mmol/L 转 mg/dL (如果值小于 30，说明是 mmol/L)
-        if df['glucose'].max() < 30:
-            df['glucose'] = df['glucose'] * 18
-        
-        df = df.dropna(subset=['glucose']).sort_values('timestamp')
+        # 直接使用解析好的数据
+        if 'timestamp' not in df.columns or 'glucose' not in df.columns:
+            return {"error": f"解析后的数据缺少必要列: {df.columns.tolist()}"}
         
         results = analyze_glucose(df)
         
